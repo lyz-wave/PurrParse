@@ -1,0 +1,2058 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>论文深度精读工作台 (V4) | Attention Is All You Need (Vaswani et al., 2017)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <!-- KaTeX 数学公式渲染引擎 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --navy: #1a2744;
+      --navy-light: #24355a;
+      --navy-dark: #0f172a;
+      --paper: #faf8f5;
+      --paper-card: #ffffff;
+      --zh-bg: #f0ece2;
+      --zh-border: #8c7a6b;
+      --text-main: #1e2430;
+      --text-muted: #5a6270;
+      --border-soft: #e4dfd5;
+      --hl-thesis: #fef08a;
+      --hl-thesis-border: #ca8a04;
+      --hl-term: #fecaca;
+      --hl-term-border: #dc2626;
+      --hl-evidence: #bfdbfe;
+      --hl-evidence-border: #2563eb;
+      --hl-concession: #bbf7d0;
+      --hl-concession-border: #16a34a;
+      --hl-method: #e9d5ff;
+      --hl-method-border: #9333ea;
+      --shadow-sm: 0 2px 8px rgba(26, 39, 68, 0.05);
+      --shadow-md: 0 8px 24px rgba(26, 39, 68, 0.12);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 126px;
+    }
+
+    body {
+      background-color: var(--paper);
+      color: var(--text-main);
+      font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 1. 顶部固定导航栏 */
+    .top-header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: var(--navy);
+      color: #f8fafc;
+      padding: 12px 28px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    }
+
+    .header-inner {
+      max-width: 1540px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .title-block { display: flex; flex-direction: column; gap: 3px; }
+    .title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    .paper-title {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      color: #ffffff;
+    }
+
+    .paper-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      background: rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-weight: 500;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .paper-sub { font-size: 0.78rem; color: #cbd5e1; }
+
+    .controls-wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+    .legend-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      background: rgba(0, 0, 0, 0.24);
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .legend-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      color: #94a3b8;
+      margin-right: 2px;
+    }
+
+    .legend-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.74rem;
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      padding: 4px 9px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.16s ease;
+      font-family: inherit;
+    }
+    .legend-btn:hover { background: rgba(255, 255, 255, 0.16); }
+    .legend-btn.active {
+      background: #ffffff;
+      color: var(--navy);
+      font-weight: 600;
+    }
+
+    .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+    .dot-thesis { background: var(--hl-thesis); border: 1px solid var(--hl-thesis-border); }
+    .dot-term { background: var(--hl-term); border: 1px solid var(--hl-term-border); }
+    .dot-evidence { background: var(--hl-evidence); border: 1px solid var(--hl-evidence-border); }
+    .dot-concession { background: var(--hl-concession); border: 1px solid var(--hl-concession-border); }
+    .dot-method { background: var(--hl-method); border: 1px solid var(--hl-method-border); }
+
+    .action-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    .tool-btn {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.73rem;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: var(--navy-light);
+      color: #f8fafc;
+      cursor: pointer;
+      transition: all 0.16s ease;
+    }
+    .tool-btn:hover { background: #32497a; }
+    .tool-btn.active-mode {
+      background: #eab308;
+      color: #0f172a;
+      border-color: #facc15;
+      font-weight: 600;
+    }
+    .tool-btn.export-btn {
+      background: #e2e8f0;
+      border-color: #ffffff;
+      color: var(--navy-dark);
+      font-weight: 600;
+    }
+    .tool-btn.export-btn:hover { background: #ffffff; }
+
+    /* 2. 吸顶章节导航条 */
+    .sub-nav {
+      position: sticky;
+      top: 63px;
+      z-index: 990;
+      background: rgba(250, 248, 245, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border-soft);
+      padding: 8px 28px;
+    }
+
+    .sub-nav-inner {
+      max-width: 1540px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .sub-nav-inner::-webkit-scrollbar { display: none; }
+
+    .nav-link {
+      text-decoration: none;
+      font-size: 0.76rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      padding: 4px 10px;
+      border-radius: 4px;
+      white-space: nowrap;
+      border: 1px solid transparent;
+      transition: all 0.16s ease;
+    }
+    .nav-link:hover { color: var(--navy); background: #ece7dc; }
+    .nav-link.active {
+      background: var(--navy);
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .nav-role {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.68rem;
+      opacity: 0.75;
+      margin-left: 3px;
+    }
+
+    /* 主工作区容器 */
+    .workbench-container {
+      max-width: 1540px;
+      margin: 28px auto 72px;
+      padding: 0 28px;
+    }
+
+    /* 3. 顶层认知脚手架与可交互 SVG 架构图 */
+    .mental-model-card {
+      background: var(--paper-card);
+      border: 1px solid var(--border-soft);
+      border-top: 4px solid var(--navy);
+      border-radius: 8px;
+      padding: 24px 28px;
+      margin-bottom: 32px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .mm-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-soft);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .mm-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--navy);
+      letter-spacing: 0.2px;
+    }
+
+    .mm-subtitle {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.76rem;
+      color: var(--text-muted);
+    }
+
+    .mm-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .mm-box {
+      background: #f8f6f1;
+      border: 1px solid #e6e1d6;
+      border-top: 3px solid var(--navy);
+      border-radius: 6px;
+      padding: 16px;
+    }
+
+    .mm-box-tag {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--navy);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .mm-box p { font-size: 0.85rem; color: var(--text-main); line-height: 1.62; }
+
+    /* SVG 架构图面板 */
+    .svg-panel {
+      background: #f4f1ea;
+      border: 1px solid #dfd9cd;
+      border-radius: 6px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+    }
+
+    .svg-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .svg-panel-title {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--navy);
+      text-transform: uppercase;
+    }
+
+    .svg-panel-hint {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .arch-svg {
+      width: 100%;
+      height: auto;
+      max-height: 300px;
+      display: block;
+      background: #ffffff;
+      border: 1px solid #e5e0d5;
+      border-radius: 4px;
+      padding: 8px;
+    }
+
+    .svg-node {
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+    .svg-node:hover rect {
+      stroke-width: 2.5px;
+      filter: brightness(0.96);
+    }
+
+    /* 符号词典栏 */
+    .glossary-strip {
+      background: #f8f6f1;
+      border-radius: 6px;
+      padding: 14px 18px;
+      border: 1px solid #e2dacb;
+    }
+
+    .glossary-title {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: var(--navy);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .glossary-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 10px;
+    }
+
+    .g-item {
+      background: #ffffff;
+      padding: 9px 12px;
+      border-radius: 4px;
+      border-left: 3px solid var(--hl-term-border);
+      font-size: 0.8rem;
+    }
+
+    .g-term {
+      font-weight: 600;
+      color: #991b1b;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    /* 章节分隔栏 */
+    .section-divider {
+      margin: 38px 0 18px;
+      padding: 12px 18px;
+      background: var(--navy);
+      color: #ffffff;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .section-divider h2 {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .section-task-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.74rem;
+      background: rgba(255, 255, 255, 0.12);
+      padding: 3px 10px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* 4. 逐段双栏同行网格 (.para-row) */
+    .para-row {
+      display: grid;
+      grid-template-columns: 58fr 42fr;
+      gap: 22px;
+      margin-bottom: 22px;
+      align-items: start;
+      transition: opacity 0.22s ease;
+    }
+
+    body.hide-notes .para-row { grid-template-columns: 1fr; }
+    body.hide-notes .col-note { display: none; }
+    body.hide-zh .zh-block, body.hide-zh .en-zh-divider { display: none; }
+
+    body.pareto-mode .para-row[data-weight="transition"] {
+      opacity: 0.28;
+    }
+    body.pareto-mode .para-row[data-weight="transition"]:hover {
+      opacity: 1;
+    }
+
+    /* 左栏：英中双语 */
+    .col-text {
+      background: var(--paper-card);
+      border: 1px solid var(--border-soft);
+      border-radius: 6px;
+      padding: 20px 24px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .para-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f0ece2;
+      flex-wrap: wrap;
+    }
+
+    .para-id {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.73rem;
+      font-weight: 600;
+      color: var(--navy);
+      background: #e8ecf4;
+      padding: 2px 7px;
+      border-radius: 3px;
+    }
+
+    .weight-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.69rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 3px;
+      letter-spacing: 0.3px;
+    }
+    .w-core { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .w-support { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+    .w-transition { background: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }
+
+    .para-tldr {
+      font-size: 0.87rem;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .en-block {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 1rem;
+      line-height: 1.78;
+      color: #181c24;
+    }
+    .en-block p + p { margin-top: 10px; }
+
+    /* 公式框与张量维度流 */
+    .formula-card {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-left: 3px solid var(--hl-method-border);
+      border-radius: 4px;
+      margin: 12px 0;
+      overflow-x: auto;
+    }
+
+    .formula-math {
+      padding: 12px 16px;
+      font-size: 0.95rem;
+      color: #0f172a;
+      border-bottom: 1px dashed #cbd5e1;
+    }
+
+    .tensor-flow {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.74rem;
+      background: #f1f5f9;
+      color: #334155;
+      padding: 7px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tf-label {
+      font-weight: 600;
+      color: var(--navy);
+      background: #e2e8f0;
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+
+    /* 数据表格 */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 0.8rem;
+    }
+    .data-table th, .data-table td {
+      border: 1px solid #d1d5db;
+      padding: 6px 10px;
+      text-align: left;
+    }
+    .data-table th {
+      background: #f1f5f9;
+      color: var(--navy);
+      font-weight: 600;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    /* 五维高亮 */
+    .hl {
+      padding: 1px 3px;
+      border-radius: 2px;
+      transition: opacity 0.18s ease, box-shadow 0.18s ease;
+    }
+    .hl-thesis { background-color: var(--hl-thesis); border-bottom: 2px solid var(--hl-thesis-border); }
+    .hl-term {
+      background-color: var(--hl-term);
+      border-bottom: 2px dotted var(--hl-term-border);
+      cursor: help;
+      font-weight: 600;
+    }
+    .hl-evidence { background-color: var(--hl-evidence); border-bottom: 2px solid var(--hl-evidence-border); }
+    .hl-concession { background-color: var(--hl-concession); border-bottom: 2px solid var(--hl-concession-border); }
+    .hl-method { background-color: var(--hl-method); border-bottom: 2px solid var(--hl-method-border); }
+
+    body[data-filter] .hl {
+      opacity: 0.2;
+      background-color: transparent !important;
+      border-bottom-color: transparent !important;
+    }
+    body[data-filter="thesis"] .hl-thesis,
+    body[data-filter="term"] .hl-term,
+    body[data-filter="evidence"] .hl-evidence,
+    body[data-filter="concession"] .hl-concession,
+    body[data-filter="method"] .hl-method {
+      opacity: 1;
+      box-shadow: 0 0 0 2px rgba(26, 39, 68, 0.22);
+    }
+    body[data-filter="thesis"] .hl-thesis { background-color: var(--hl-thesis) !important; }
+    body[data-filter="term"] .hl-term { background-color: var(--hl-term) !important; }
+    body[data-filter="evidence"] .hl-evidence { background-color: var(--hl-evidence) !important; }
+    body[data-filter="concession"] .hl-concession { background-color: var(--hl-concession) !important; }
+    body[data-filter="method"] .hl-method { background-color: var(--hl-method) !important; }
+
+    /* 1px 分隔线与中文意译块 */
+    .en-zh-divider {
+      border: 0;
+      height: 1px;
+      background: #dfd9cd;
+      margin: 15px 0;
+    }
+
+    .zh-block {
+      background-color: var(--zh-bg);
+      border-left: 3px solid var(--zh-border);
+      padding: 13px 16px;
+      border-radius: 0 4px 4px 0;
+      font-size: 0.92rem;
+      line-height: 1.74;
+      color: #2c2623;
+    }
+
+    /* 右栏：深度批注卡片 */
+    .col-note {
+      background: var(--paper-card);
+      border: 1px solid var(--border-soft);
+      border-left: 4px solid var(--navy);
+      border-radius: 6px;
+      padding: 18px 20px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .col-note.b-thesis { border-left-color: var(--hl-thesis-border); }
+    .col-note.b-term { border-left-color: var(--hl-term-border); }
+    .col-note.b-evidence { border-left-color: var(--hl-evidence-border); }
+    .col-note.b-concession { border-left-color: var(--hl-concession-border); }
+    .col-note.b-method { border-left-color: var(--hl-method-border); }
+
+    .transition-bar {
+      background: #f4f1ea;
+      border-left: 4px solid #9ca3af;
+      border-radius: 4px;
+      padding: 12px 16px;
+      font-size: 0.84rem;
+      color: #4b5563;
+    }
+
+    .note-module {
+      margin-bottom: 12px;
+      padding-bottom: 11px;
+      border-bottom: 1px dashed #e5e0d5;
+      font-size: 0.84rem;
+    }
+    .note-module:last-of-type {
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+    }
+
+    .nm-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 600;
+      color: var(--navy);
+      font-size: 0.75rem;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    /* 可点击跨节锚点 */
+    .echo-link {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.69rem;
+      background: #eef2ff;
+      color: #3730a3;
+      padding: 2px 7px;
+      border-radius: 3px;
+      border: 1px solid #c7d2fe;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .echo-link:hover {
+      background: #3730a3;
+      color: #ffffff;
+    }
+
+    .nm-body { color: #2d3440; line-height: 1.62; }
+
+    /* 逐段个人随手记 */
+    .user-note-wrap {
+      margin-top: 8px;
+    }
+
+    .toggle-note-btn {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      background: #f8f6f1;
+      border: 1px solid #dfd9cd;
+      padding: 4px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .toggle-note-btn:hover {
+      color: var(--navy);
+      border-color: var(--navy);
+    }
+
+    .user-note-area {
+      display: none;
+      margin-top: 8px;
+    }
+    .user-note-area.open {
+      display: block;
+    }
+    .user-note-area textarea {
+      width: 100%;
+      min-height: 68px;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.82rem;
+      background: #fffbeb;
+      color: var(--text-main);
+      resize: vertical;
+    }
+
+    /* 5. 底部全局论证复盘与自测 */
+    .synthesis-section {
+      margin-top: 48px;
+      background: var(--paper-card);
+      border: 1px solid var(--border-soft);
+      border-top: 4px solid var(--navy);
+      border-radius: 8px;
+      padding: 28px 32px;
+      box-shadow: var(--shadow-md);
+    }
+
+    .syn-title {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 1.28rem;
+      color: var(--navy);
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .flow-skeleton {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .flow-node {
+      background: #f8f6f1;
+      border: 1px solid #dfd9cd;
+      border-top: 3px solid var(--navy);
+      border-radius: 4px;
+      padding: 14px;
+    }
+
+    .flow-node h5 {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.76rem;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+    .flow-node p { font-size: 0.8rem; color: var(--text-main); line-height: 1.52; }
+
+    .core-claim-banner {
+      background: var(--navy);
+      color: #ffffff;
+      padding: 18px 22px;
+      border-radius: 6px;
+      margin-bottom: 24px;
+      border-left: 4px solid #eab308;
+    }
+    .core-claim-banner h4 {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      color: #fde047;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 6px;
+    }
+    .core-claim-banner p { font-size: 0.95rem; line-height: 1.65; }
+
+    .vs-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 26px;
+    }
+    .vs-card { padding: 18px 20px; border-radius: 6px; font-size: 0.86rem; }
+    .vs-strong { background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; }
+    .vs-weak { background: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #dc2626; }
+    .vs-card h4 {
+      font-family: 'IBM Plex Mono', monospace;
+      margin-bottom: 8px;
+      font-size: 0.84rem;
+      text-transform: uppercase;
+    }
+
+    .socratic-box h4 {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.9rem;
+      color: var(--navy);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    details.socratic-item {
+      background: #f8f6f1;
+      border: 1px solid #e2dccf;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      padding: 12px 16px;
+    }
+    details.socratic-item summary {
+      font-weight: 600;
+      font-size: 0.88rem;
+      color: var(--navy);
+      cursor: pointer;
+    }
+    details.socratic-item .ans {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed #d5cfc2;
+      font-size: 0.85rem;
+      color: #2d3748;
+      line-height: 1.65;
+    }
+
+    /* 全局自适应边界悬浮解释窗 (JS 控制) */
+    #globalTooltip {
+      position: fixed;
+      max-width: 310px;
+      background: var(--navy-dark);
+      color: #f8fafc;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 0.78rem;
+      line-height: 1.52;
+      padding: 10px 13px;
+      border-radius: 4px;
+      border-left: 3px solid var(--hl-term-border);
+      box-shadow: var(--shadow-md);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.14s ease;
+      z-index: 3000;
+    }
+    #globalTooltip.visible { opacity: 1; }
+
+    /* 跨节跳转返回浮动按钮 */
+    #backJumpBtn {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      background: var(--navy);
+      color: #ffffff;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.76rem;
+      padding: 9px 14px;
+      border: 1px solid #eab308;
+      border-radius: 4px;
+      box-shadow: var(--shadow-md);
+      cursor: pointer;
+      display: none;
+      z-index: 2000;
+    }
+    #backJumpBtn:hover { background: var(--navy-light); }
+
+    /* 通知栏 */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--navy);
+      color: #fff;
+      font-family: 'IBM Plex Mono', monospace;
+      padding: 11px 18px;
+      border-radius: 4px;
+      box-shadow: var(--shadow-md);
+      font-size: 0.8rem;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px);
+      transition: all 0.22s ease;
+      z-index: 2000;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 960px) {
+      .mm-grid, .para-row, .flow-skeleton, .vs-grid { grid-template-columns: 1fr; }
+      .top-header { padding: 10px 16px; }
+      .sub-nav { top: 108px; padding: 6px 16px; }
+      .workbench-container { padding: 0 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. 顶部固定导航栏 -->
+  <header class="top-header">
+    <div class="header-inner">
+      <div class="title-block">
+        <div class="title-row">
+          <span class="paper-title">Attention Is All You Need</span>
+          <span class="paper-badge">NEURIPS 2017</span>
+          <span class="paper-badge">ARCHITECTURE / 架构奠基型论文</span>
+        </div>
+        <div class="paper-sub">Ashish Vaswani et al. (Google Brain &amp; Google Research) | 现代大语言模型（GPT / Gemini / Claude）的底层架构蓝图</div>
+      </div>
+
+      <div class="controls-wrap">
+        <div class="legend-bar" aria-label="五维分析图例">
+          <span class="legend-label">[DIMENSION FILTER]:</span>
+          <button class="legend-btn" data-dim="thesis"><span class="dot dot-thesis"></span>核心论点</button>
+          <button class="legend-btn" data-dim="term"><span class="dot dot-term"></span>关键术语 (悬停释义)</button>
+          <button class="legend-btn" data-dim="evidence"><span class="dot dot-evidence"></span>实证/数据</button>
+          <button class="legend-btn" data-dim="concession"><span class="dot dot-concession"></span>让步/局限</button>
+          <button class="legend-btn" data-dim="method"><span class="dot dot-method"></span>方法论说明</button>
+        </div>
+
+        <div class="action-btns">
+          <button class="tool-btn" id="btnPareto" title="弱化过渡段，仅聚焦核心与基石段">[80/20 核心聚焦]</button>
+          <button class="tool-btn" id="btnToggleZh">[显/隐中文]</button>
+          <button class="tool-btn" id="btnToggleNotes">[显/隐批注]</button>
+          <button class="tool-btn export-btn" id="btnExportMd">[导出 Markdown 笔记]</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 2. 吸顶章节导航条 -->
+  <nav class="sub-nav">
+    <div class="sub-nav-inner">
+      <a class="nav-link active" href="#sec-mental">00. 顶层导读与架构图</a>
+      <a class="nav-link" href="#sec-abstract">Abstract <span class="nav-role">[总纲]</span></a>
+      <a class="nav-link" href="#sec-intro">1. Intro <span class="nav-role">[RNN串行瓶颈]</span></a>
+      <a class="nav-link" href="#sec-bg">2. Background <span class="nav-role">[O(1)依赖路径]</span></a>
+      <a class="nav-link" href="#sec-arch">3. Architecture <span class="nav-role">[缩放点积/多头/PE]</span></a>
+      <a class="nav-link" href="#sec-why">4. Why Self-Attention <span class="nav-role">[复杂度对决]</span></a>
+      <a class="nav-link" href="#sec-exp">5-6. Training &amp; Results <span class="nav-role">[SOTA与消融]</span></a>
+      <a class="nav-link" href="#sec-conc">7. Conclusion <span class="nav-role">[多模态展望]</span></a>
+      <a class="nav-link" href="#sec-synthesis">08. 论证复盘与自测</a>
+    </div>
+  </nav>
+
+  <main class="workbench-container">
+
+    <!-- 3. 顶层认知脚手架与可交互 SVG 架构图 -->
+    <section class="mental-model-card" id="sec-mental">
+      <div class="mm-header">
+        <div class="mm-title">TOP MENTAL MODEL / 先见森林：30 秒认知脚手架与可交互数据流图</div>
+        <div class="mm-subtitle">READING WORKBENCH V4.0 | ZERO-EMOJI ACADEMIC EDITION</div>
+      </div>
+
+      <div class="mm-grid">
+        <div class="mm-box">
+          <span class="mm-box-tag">[PROBLEM &amp; GAP / 真问题与前人死结]</span>
+          <p>2017 年前的序列模型被 RNN（LSTM/GRU）垄断。RNN 的隐藏状态递归公式 $h_t = f(h_{t-1}, x_t)$ 将计算锁死在时间步上，导致两个致命瓶颈：(1) <strong>样本内无法在 GPU 上并行计算</strong>；(2) 距离为 $n$ 的两个词之间信号传递需跨越 $O(n)$ 步，必然导致长距信息衰减。</p>
+        </div>
+        <div class="mm-box">
+          <span class="mm-box-tag">[EUREKA INTUITION / 核心破局直觉]</span>
+          <p>过去学界仅将 Attention 作为 RNN 的附属插件。作者提出彻底剔除循环与卷积，让序列内所有词元在同一时刻通过矩阵乘法直接两两对视（Self-Attention）。任意两词间的通信路径瞬间从 $O(n)$ 坍缩为 <strong>$O(1)$ 常数级直达</strong>，且训练过程可 100% 矩阵并行。</p>
+        </div>
+        <div class="mm-box">
+          <span class="mm-box-tag">[FUNDAMENTAL TRADE-OFF / 核心交换代价]</span>
+          <p>放弃循环结构带来两个代价：(1) 模型丧失天然词序感，必须注入<strong>正余弦位置编码（Positional Encoding）</strong>；(2) 全局两两比对使计算复杂度变为序列长度的平方 $O(n^2 \cdot d)$，当 $n < d$（常规句子）时极快，但超长序列需限制局部注意力窗口。</p>
+        </div>
+      </div>
+
+      <!-- 原生可交互 SVG 架构与张量数据流图 -->
+      <div class="svg-panel">
+        <div class="svg-panel-header">
+          <span class="svg-panel-title">INTERACTIVE ARCHITECTURE DATAFLOW / Transformer 核心架构与缩放点积数据流图</span>
+          <span class="svg-panel-hint">[交互提示：点击图中任意模块节点，可直接平滑跳转至正文对应章节段落]</span>
+        </div>
+        <svg class="arch-svg" viewBox="0 0 980 230" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#1a2744" />
+            </marker>
+          </defs>
+          <!-- 背景分区框 -->
+          <rect x="10" y="12" width="465" height="206" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="4 3" />
+          <text x="22" y="30" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600" fill="#475569">MACRO PIPELINE: ENCODER-DECODER STACK (N = 6)</text>
+
+          <rect x="495" y="12" width="475" height="206" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="4 3" />
+          <text x="508" y="30" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600" fill="#475569">MICRO ENGINE: SCALED DOT-PRODUCT &amp; MULTI-HEAD (h = 8)</text>
+
+          <!-- 节点 1: Input Embedding + PE -->
+          <g class="svg-node" onclick="jumpTo('#sec3-5')">
+            <rect x="24" y="148" width="124" height="52" rx="4" fill="#e9d5ff" stroke="#9333ea" stroke-width="1.5" />
+            <text x="86" y="170" text-anchor="middle" font-family="IBM Plex Sans" font-size="11" font-weight="700" fill="#1e1b4b">Embeddings + PE</text>
+            <text x="86" y="186" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#4c1d95">sin/cos [n, 512] (§3.5)</text>
+          </g>
+
+          <!-- 节点 2: Encoder Self-Attention -->
+          <g class="svg-node" onclick="jumpTo('#sec3-2-2')">
+            <rect x="24" y="54" width="124" height="58" rx="4" fill="#fef08a" stroke="#ca8a04" stroke-width="1.5" />
+            <text x="86" y="76" text-anchor="middle" font-family="IBM Plex Sans" font-size="11" font-weight="700" fill="#1e2430">Multi-Head Attn</text>
+            <text x="86" y="92" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#713f12">Bidirectional O(1)</text>
+            <text x="86" y="105" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#713f12">+ Residual &amp; LN (§3.1)</text>
+          </g>
+
+          <!-- 节点 3: Position-wise FFN -->
+          <g class="svg-node" onclick="jumpTo('#sec3-3')">
+            <rect x="176" y="54" width="124" height="58" rx="4" fill="#bfdbfe" stroke="#2563eb" stroke-width="1.5" />
+            <text x="238" y="76" text-anchor="middle" font-family="IBM Plex Sans" font-size="11" font-weight="700" fill="#1e3a8a">Position-wise FFN</text>
+            <text x="238" y="92" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#1e40af">512 -&gt; 2048 -&gt; 512</text>
+            <text x="238" y="105" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#1e40af">ReLU Nonlinear (§3.3)</text>
+          </g>
+
+          <!-- 节点 4: Decoder Masked Attention -->
+          <g class="svg-node" onclick="jumpTo('#sec3-1')">
+            <rect x="176" y="148" width="124" height="52" rx="4" fill="#fecaca" stroke="#dc2626" stroke-width="1.5" />
+            <text x="238" y="170" text-anchor="middle" font-family="IBM Plex Sans" font-size="11" font-weight="700" fill="#7f1d1d">Masked Self-Attn</text>
+            <text x="238" y="186" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#991b1b">Causal Mask -inf (§3.1)</text>
+          </g>
+
+          <!-- 节点 5: Cross Attention + Output -->
+          <g class="svg-node" onclick="jumpTo('#sec3-2-3')">
+            <rect x="330" y="96" width="130" height="64" rx="4" fill="#bbf7d0" stroke="#16a34a" stroke-width="1.5" />
+            <text x="395" y="118" text-anchor="middle" font-family="IBM Plex Sans" font-size="11" font-weight="700" fill="#14532d">Enc-Dec Cross Attn</text>
+            <text x="395" y="134" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#166534">Q: Dec | K,V: Enc</text>
+            <text x="395" y="149" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#166534">-&gt; Shared Softmax (§3.4)</text>
+          </g>
+
+          <!-- 左区连线 -->
+          <line x1="86" y1="148" x2="86" y2="116" stroke="#1a2744" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="148" y1="83" x2="172" y2="83" stroke="#1a2744" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="300" y1="83" x2="395" y2="94" stroke="#1a2744" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="300" y1="174" x2="395" y2="162" stroke="#1a2744" stroke-width="1.5" marker-end="url(#arrow)" />
+
+          <!-- 右区：Scaled Dot-Product 矩阵变换链 -->
+          <g class="svg-node" onclick="jumpTo('#sec3-2-1')">
+            <rect x="510" y="54" width="128" height="62" rx="4" fill="#ffffff" stroke="#1a2744" stroke-width="1.5" />
+            <text x="574" y="75" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="700" fill="#1a2744">1. MatMul (Q x K^T)</text>
+            <text x="574" y="92" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#475569">[n, 64] x [64, n]</text>
+            <text x="574" y="106" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#2563eb">=&gt; Scores [n, n]</text>
+          </g>
+
+          <g class="svg-node" onclick="jumpTo('#sec3-2-1')">
+            <rect x="664" y="54" width="132" height="62" rx="4" fill="#fef08a" stroke="#ca8a04" stroke-width="1.5" />
+            <text x="730" y="75" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="700" fill="#1a2744">2. Scale &amp; Softmax</text>
+            <text x="730" y="92" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#713f12">Divide by sqrt(64)=8</text>
+            <text x="730" y="106" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#991b1b">Var(q.k): d_k -&gt; 1.0</text>
+          </g>
+
+          <g class="svg-node" onclick="jumpTo('#sec3-2-2')">
+            <rect x="822" y="54" width="134" height="62" rx="4" fill="#e9d5ff" stroke="#9333ea" stroke-width="1.5" />
+            <text x="889" y="75" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="700" fill="#1a2744">3. Weighted V &amp; Cat</text>
+            <text x="889" y="92" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#4c1d95">[n, n] x V[n, 64]</text>
+            <text x="889" y="106" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#4c1d95">Concat 8 Heads -&gt; [n,512]</text>
+          </g>
+
+          <g class="svg-node" onclick="jumpTo('#sec4-1')">
+            <rect x="510" y="144" width="446" height="56" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5" />
+            <text x="733" y="166" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="700" fill="#1e3a8a">COMPLEXITY ADVANTAGE (§4 Table 1): Path Length O(1) | Sequential Ops O(1)</text>
+            <text x="733" y="185" text-anchor="middle" font-family="IBM Plex Sans" font-size="10.5" fill="#1e40af">Self-Attention O(n^2 * d) beats Recurrent O(n * d^2) whenever sequence length n &lt; hidden dimension d (512)</text>
+          </g>
+
+          <line x1="638" y1="85" x2="660" y2="85" stroke="#1a2744" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="796" y1="85" x2="818" y2="85" stroke="#1a2744" stroke-width="1.5" marker-end="url(#arrow)" />
+        </svg>
+      </div>
+
+      <div class="glossary-strip">
+        <div class="glossary-title">GLOSSARY &amp; SYMBOLS / 核心术语与数学符号锚点表（正文中遇到红色术语可鼠标悬停查看）</div>
+        <div class="glossary-items">
+          <div class="g-item"><span class="g-term">Q, K, V (Query/Key/Value)</span>：信息检索模型——$Q$ 是当前位置的“查询寻址向量”，$K$ 是所有候选位置的“索引键向量”，$Q K^T$ 算出相关性分布后，加权汇聚 $V$（“实际内容向量”）。</div>
+          <div class="g-item"><span class="g-term">1 / \sqrt{d_k} (Scaling Factor)</span>：方差归一化因子——若 $q, k$ 独立同分布且方差为 $1$，则点积 $q \cdot k$ 的方差膨胀为 $d_k$；除以 $\sqrt{d_k}$ 将方差拉回 $1$，防止 Softmax 饱和导致梯度归零。</div>
+          <div class="g-item"><span class="g-term">Multi-Head (h = 8)</span>：子空间并行解耦——将 $d_{\text{model}}=512$ 切分为 $8$ 个独立的 $64$ 维投影子空间，同时捕捉指代、句法、语义搭配等多元关联，且总计算量不变。</div>
+          <div class="g-item"><span class="g-term">Positional Encoding (PE)</span>：多频正余弦位置时钟——利用三角恒等式 $\sin(\alpha+\beta)$，使任意固定距离偏移 $PE_{pos+k}$ 都能表示为 $PE_{pos}$ 的线性矩阵变换。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== ABSTRACT ==================== -->
+    <div class="section-divider" id="sec-abstract">
+      <h2>Abstract · 论文摘要</h2>
+      <span class="section-task-badge">SECTION TASK: 确立靶子 -&gt; 提出纯注意力架构 -&gt; 亮出 SOTA 质量与并行算力比</span>
+    </div>
+
+    <article class="para-row" id="abs-p1" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">Abs.P1</span>
+          <span class="weight-badge w-core">[CORE / 核心]</span>
+          <span class="para-tldr">彻底抛弃循环与卷积，仅靠注意力机制实现翻译质量与训练并行度的双重跃迁</span>
+        </div>
+        <div class="en-block">
+          <p>The dominant <span class="hl hl-term" data-tip="序列转导模型：将输入序列映射为输出序列的模型（如机器翻译、语音识别、文本摘要）。">sequence transduction models</span> are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. <span class="hl hl-thesis">We propose a new simple network architecture, the <span class="hl hl-term" data-tip="Transformer：本文提出的首个完全基于自注意力机制、不含任何循环或卷积操作的序列转导模型。">Transformer</span>, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely.</span> <span class="hl hl-evidence">Experiments on two machine translation tasks show these models to be superior in quality while being more parallelizable and requiring significantly less time to train. Our model achieves $28.4$ BLEU on the WMT 2014 English-to-German translation task, improving over the existing best results, including ensembles by over $2$ BLEU.</span> <span class="hl hl-evidence">On the WMT 2014 English-to-French translation task, our model establishes a new single-model state-of-the-art BLEU score of $41.8$ after training for $3.5$ days on eight GPUs, a small fraction of the training costs of the best models from the literature.</span> We show that the Transformer generalizes well to other tasks by applying it successfully to English constituency parsing both with large and limited training data.</p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          主流的序列转导模型普遍采用基于复杂循环神经网络（RNN）或卷积神经网络（CNN）的编码器-解码器架构。表现最优的模型还会通过注意力机制连接编码器与解码器。我们提出了一种全新的简洁网络架构——Transformer，它完全基于注意力机制构建，彻底摒弃了循环结构与卷积操作。在两项机器翻译任务上的实验表明，该模型不仅翻译质量更优，而且具备更强的并行计算能力，训练所需时间大幅缩短。我们的模型在 WMT 2014 英译德任务上取得了 $28.4$ 的 BLEU 分数，比此前包括多模型集成在内的最佳结果高出 $2$ 个 BLEU 以上。在 WMT 2014 英译法任务上，我们的单模型仅在 $8$ 块 GPU 上训练 $3.5$ 天，便创下了 $41.8$ 的单模型最高 BLEU 纪录，而训练成本仅为此前文献中顶尖模型的一小部分。此外，我们将 Transformer 成功应用于大规模及受限数据条件下的英语成分句法分析，证明了其出色的跨任务泛化能力。
+        </div>
+      </div>
+
+      <div class="col-note b-thesis">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec6-1">[跳转验证 -&gt; §6.1 翻译主实验]</a>
+          </div>
+          <div class="nm-body"><strong>[既有范式：复杂 RNN/CNN + 注意力辅助] -&gt; [核心破局：只留注意力，全砍循环与卷积] -&gt; [双重实证：BLEU 刷榜 + 训练成本暴降]</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">02 / 段落功能与逻辑角色</div>
+          <div class="nm-body"><strong>全文总纲（Thesis Statement）</strong>。前两句承认现有最佳模型是“RNN/CNN + Attention”，第三句直接釜底抽薪（<code>dispensing with... entirely</code>）：既然 Attention 已经承担了核心对齐，为何还要保留拖慢并行速度的 RNN/CNN？</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">03 / 硬核破译（数字背后的分量）</div>
+          <div class="nm-body">在机器翻译评测中，BLEU 提升 $0.5$ 即属显著突破，而 Transformer 单模型超越前人“多模型集成（Ensembles）”达 $2.0$ BLEU 以上，且训练算力从 $10^{20}$ FLOPs 降至 $10^{18}\sim 10^{19}$ FLOPs 量级，彻底打破了“精度与训练速度不可兼得”的僵局。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">04 / 审稿人视角（论证技巧）</div>
+          <div class="nm-body"><strong>对比修辞与防御闭环</strong>：用 <code>complex</code> 修饰传统 RNN/CNN，用 <code>simple</code> 修饰 Transformer；并在摘要末句补上“英语成分句法分析”，预先封堵审稿人关于“是否仅适用于机器翻译”的质疑。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('abs-p1')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-abs-p1">
+            <textarea data-note-id="abs-p1" placeholder="在此记录你对本段的疑问或思考（自动保存至本地并纳入 Markdown 导出）..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== SECTION 1: INTRODUCTION ==================== -->
+    <div class="section-divider" id="sec-intro">
+      <h2>1. Introduction · 引言</h2>
+      <span class="section-task-badge">SECTION TASK: 解剖 RNN 的物理死结（$h_t$ 依赖 $h_{t-1}$ 导致无法样本内并行）</span>
+    </div>
+
+    <article class="para-row" id="sec1-p1" data-weight="transition">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§1.P1</span>
+          <span class="weight-badge w-transition">[TRANSITION / 过渡]</span>
+          <span class="para-tldr">确立 LSTM 与 GRU 在序列建模任务中的既有统治地位</span>
+        </div>
+        <div class="en-block">
+          <p>Recurrent neural networks, long short-term memory and gated recurrent neural networks in particular, have been firmly established as state of the art approaches in sequence modeling and transduction problems such as language modeling and machine translation. Numerous efforts have since continued to push the boundaries of recurrent language models and encoder-decoder architectures.</p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          循环神经网络，尤其是长短期记忆网络（LSTM）和门控循环神经网络（GRU），早已在语言建模和机器翻译等序列建模与转导任务中确立了统治地位。此后，学界投入了大量精力，持续拓展循环语言模型与编码器-解码器架构的性能边界。
+        </div>
+      </div>
+
+      <div class="col-note">
+        <div class="transition-bar">
+          <strong>[TRANSITION / 过渡铺垫]</strong>：先确立学界共识基线（承认 RNN/LSTM 的历史地位），为下一段直接刺穿其串行计算瓶颈做铺垫。
+        </div>
+      </div>
+    </article>
+
+    <article class="para-row" id="sec1-p2" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§1.P2</span>
+          <span class="weight-badge w-core">[CORE / 核心]</span>
+          <span class="para-tldr">指明 RNN 的根本物理缺陷：时间步递归锁死了样本内并行化</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-method">Recurrent models typically factor computation along the symbol positions of the input and output sequences. Aligning the positions to steps in computation time, they generate a sequence of hidden states $h_t$, as a function of the previous hidden state $h_{t-1}$ and the input for position $t$.</span> <span class="hl hl-thesis">This inherently sequential nature precludes parallelization within training examples, which becomes critical at longer sequence lengths, as memory constraints limit batching across examples.</span> <span class="hl hl-concession">Recent work has achieved significant improvements in computational efficiency through factorization tricks and conditional computation, while also improving model performance in case of the latter. The fundamental constraint of sequential computation, however, remains.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          循环模型通常沿着输入和输出序列的符号位置来分解计算过程。它们将词元位置与计算时间步一一对齐，根据前一时刻的隐藏状态 $h_{t-1}$ 和当前位置 $t$ 的输入，依次生成隐藏状态序列 $h_t$。这种与生俱来的顺序计算特性，从根本上阻碍了训练样本内部的并行化；当序列长度增加时，由于显存限制了跨样本的批次大小（Batching），这一缺陷变得尤为致命。尽管近期的研究通过矩阵分解技巧和条件计算显著提升了计算效率（后者还同时提升了模型性能），但“顺序计算”这一根本桎梏依然未能打破。
+        </div>
+      </div>
+
+      <div class="col-note b-thesis">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec4-1">[跳转呼应 -&gt; §4 复杂度对比表]</a>
+          </div>
+          <div class="nm-body"><strong>[承接 §1.P1] -&gt; [剖析递归式 $h_t = f(h_{t-1}, x_t)$] -&gt; [导出核心痛点：时间步耦合 = 样本内无法并行] -&gt; [让步反驳：局部改良无法破除串行本质]</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">02 / 段落功能与逻辑角色</div>
+          <div class="nm-body"><strong>全文立论支点（Problem Formulation）</strong>。精准定义了整篇论文要消灭的核心敌人——<code>O(n) sequential operations</code>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">03 / 硬核破译（硬件体系结构视角）</div>
+          <div class="nm-body">现代 GPU 拥有数千个张量核心，最擅长同时执行互不依赖的大规模矩阵乘法；而 RNN 强迫计算按 $t=1, 2, \dots, n$ 串行排队，导致 GPU 算力利用率极低。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">04 / 审稿人视角（让步与反击）</div>
+          <div class="nm-body"><strong>可学写法</strong>：主动引用矩阵分解与条件计算（绿色让步），承认其改良贡献，随即用 <code>The fundamental constraint... however, remains</code> 完成定性收网。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec1-p2')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec1-p2">
+            <textarea data-note-id="sec1-p2" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="para-row" id="sec1-p3" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§1.P3-P4</span>
+          <span class="weight-badge w-core">[CORE / 核心]</span>
+          <span class="para-tldr">从“注意力作为循环网络的插件”跃迁为“纯注意力架构 Transformer”</span>
+        </div>
+        <div class="en-block">
+          <p>Attention mechanisms have become an integral part of compelling sequence modeling and transduction models in various tasks, allowing modeling of dependencies without regard to their distance in the input or output sequences. <span class="hl hl-concession">In all but a few cases, however, such attention mechanisms are used in conjunction with a recurrent network.</span></p>
+          <p><span class="hl hl-thesis">In this work we propose the Transformer, a model architecture eschewing recurrence and instead relying entirely on an attention mechanism to draw global dependencies between input and output.</span> <span class="hl hl-evidence">The Transformer allows for significantly more parallelization and can reach a new state of the art in translation quality after being trained for as little as twelve hours on eight P100 GPUs.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          注意力机制已成为各类序列建模与转导模型中不可或缺的组件，它能够直接对输入或输出序列中的依赖关系进行建模，而无需考虑它们之间的距离。然而，除了极少数特例外，这类注意力机制几乎总是与循环网络绑定使用。<br><br>
+          在本研究中，我们提出了 Transformer——一种彻底摒弃循环结构、完全依赖注意力机制来捕捉输入与输出之间全局依赖关系的模型架构。Transformer 支持更高程度的并行计算，仅需在 $8$ 块 P100 GPU 上训练短短 $12$ 小时，即可在翻译质量上达到全新的最高水平。
+        </div>
+      </div>
+
+      <div class="col-note b-thesis">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec3-1">[跳转呼应 -&gt; §3.1 总体架构]</a>
+          </div>
+          <div class="nm-body"><strong>[指出现状悖论：Attention 本可无视距离，却被绑在慢速 RNN 上] -&gt; [提出解决方案：砍掉循环结构，完全由 Attention 独立建模全局依赖]</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">02 / 段落功能与逻辑角色</div>
+          <div class="nm-body"><strong>核心主张亮剑（Core Proposal）</strong>。完成引言“立靶子 -> 亮王牌”的闭环。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec1-p3')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec1-p3">
+            <textarea data-note-id="sec1-p3" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== SECTION 2: BACKGROUND ==================== -->
+    <div class="section-divider" id="sec-bg">
+      <h2>2. Background · 研究背景与相关工作</h2>
+      <span class="section-task-badge">SECTION TASK: 对比 CNN 并行方案（ByteNet/ConvS2S），确立 O(1) 路径长度优势与多头补偿机制</span>
+    </div>
+
+    <article class="para-row" id="sec2-p1" data-weight="support">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§2.P1-P4</span>
+          <span class="weight-badge w-support">[SUPPORT / 基石]</span>
+          <span class="para-tldr">相比卷积方案的 $O(n)$ 与 $O(\log_k n)$ 路径，自注意力实现 $O(1)$ 常数级直连</span>
+        </div>
+        <div class="en-block">
+          <p>The goal of reducing sequential computation also forms the foundation of the Extended Neural GPU, ByteNet and ConvS2S, all of which use convolutional neural networks as basic building block, computing hidden representations in parallel for all input and output positions. <span class="hl hl-concession">In these models, the number of operations required to relate signals from two arbitrary input or output positions grows in the distance between positions, linearly for ConvS2S and logarithmically for ByteNet. This makes it more difficult to learn dependencies between distant positions.</span></p>
+          <p><span class="hl hl-thesis">In the Transformer this is reduced to a constant number of operations, <span class="hl hl-term" data-tip="常数级操作步数 O(1)：在自注意力层中，无论两个词相距多远，只需一次矩阵相乘即可直接交互信号，路径长度不随距离增长。">O(1)</span></span>, <span class="hl hl-concession">albeit at the cost of reduced effective resolution due to averaging attention-weighted positions, an effect we counteract with <span class="hl hl-term" data-tip="多头注意力：将特征投影到多个独立子空间并行计算注意力，避免单一加权平均把不同维度的语义特征混合模糊。">Multi-Head Attention</span> as described in section 3.2.</span></p>
+          <p><span class="hl hl-term" data-tip="自注意力（内部注意力）：通过关联同一个序列内部不同位置之间的词元，来计算该序列自身上下文表征的机制。">Self-attention</span>, sometimes called intra-attention is an attention mechanism relating different positions of a single sequence in order to compute a representation of the sequence. End-to-end memory networks are based on a recurrent attention mechanism instead of sequence-aligned recurrence. <span class="hl hl-thesis">To the best of our knowledge, however, the Transformer is the first transduction model relying entirely on self-attention to compute representations of its input and output without using sequence-aligned RNNs or convolution.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          减少顺序计算的目标同样构成了 Extended Neural GPU、ByteNet 和 ConvS2S 的研究基础。这些模型均以卷积神经网络为基本构建块，并行计算所有输入和输出位置的隐藏表征。然而在这些模型中，关联任意两个输入或输出位置信号所需的操作次数，会随位置间距离的增加而增长（在 ConvS2S 中呈线性增长 $O(n)$，在 ByteNet 中呈对数增长 $O(\log_k n)$）。这使得学习远距离位置间的依赖关系变得更加困难。<br><br>
+          而在 Transformer 中，这一操作次数被缩减为常数级 $O(1)$；尽管对注意力加权位置进行平均会导致有效分辨率有所降低，但我们通过第 3.2 节所述的多头注意力机制（Multi-Head Attention）成功抵消了这一副作用。<br><br>
+          自注意力（有时亦称内部注意力）是一种通过关联单个序列内部不同位置来计算该序列表征的注意力机制。端到端记忆网络基于循环注意力机制而非序列对齐的循环结构。然而据我们所知，Transformer 是首个完全依赖自注意力来计算输入与输出表征、而不使用任何序列对齐 RNN 或卷积的转导模型。
+        </div>
+      </div>
+
+      <div class="col-note b-concession">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec3-2-2">[跳转呼应 -&gt; §3.2.2 多头注意力]</a>
+          </div>
+          <div class="nm-body"><strong>[评述同类竞品：CNN 虽能并行，但受限于局部感受野，远距通信需堆叠多层] -&gt; [确立本文优势：$O(1)$ 步全局直连] -&gt; [主动坦白代价与解药：加权平均模糊化 -&gt; 多头注意力补偿]</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">03 / 硬核破译（何谓“有效分辨率降低”？）</div>
+          <div class="nm-body">单头注意力将整句所有词的 Value 向量按标量权重加权求和（$\sum \alpha_i v_i$），不同语法属性、指代关系的特征被压缩混叠进同一个向量中，导致细粒度特征模糊。引入 8 个注意力头后，不同子空间各司其职，分辨率得以恢复。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec2-p1')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec2-p1">
+            <textarea data-note-id="sec2-p1" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== SECTION 3: MODEL ARCHITECTURE ==================== -->
+    <div class="section-divider" id="sec-arch">
+      <h2>3. Model Architecture · 模型架构（完整覆盖 §3.1 - §3.5）</h2>
+      <span class="section-task-badge">SECTION TASK: 编解码堆栈 -&gt; 缩放点积 -&gt; 多头机制 -&gt; 三类应用 -&gt; FFN -&gt; 权重共享 -&gt; 位置编码</span>
+    </div>
+
+    <article class="para-row" id="sec3-1" data-weight="support">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§3.1</span>
+          <span class="weight-badge w-support">[SUPPORT / 基石]</span>
+          <span class="para-tldr">Encoder-Decoder $N=6$ 对称堆栈、残差层归一化与解码器自回归掩码</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-method"><strong>Encoder:</strong> The encoder is composed of a stack of $N = 6$ identical layers. Each layer has two sub-layers. The first is a multi-head self-attention mechanism, and the second is a simple, position-wise fully connected feed-forward network. We employ a <span class="hl hl-term" data-tip="残差连接：将子层输入 x 直接加到子层输出 Sublayer(x) 上，构建梯度直通车，使深层网络易于优化。">residual connection</span> around each of the two sub-layers, followed by layer normalization. That is, the output of each sub-layer is $\text{LayerNorm}(x + \text{Sublayer}(x))$. To facilitate these residual connections, all sub-layers in the model, as well as the embedding layers, produce outputs of dimension $d_{\text{model}} = 512$.</span></p>
+          <p><span class="hl hl-method"><strong>Decoder:</strong> The decoder is also composed of a stack of $N = 6$ identical layers. In addition to the two sub-layers in each encoder layer, the decoder inserts a third sub-layer, which performs multi-head attention over the output of the encoder stack. Similar to the encoder, we employ residual connections around each of the sub-layers, followed by layer normalization. We also modify the self-attention sub-layer in the decoder stack to prevent positions from attending to subsequent positions. This <span class="hl hl-term" data-tip="因果掩码（Causal Masking）：在解码端计算自注意力时，将对角线右上方的未来位置权重置为负无穷，确保预测第 i 个词时无法偷看第 i 个词之后的答案。">masking</span>, combined with fact that the output embeddings are offset by one position, ensures that the predictions for position $i$ can depend only on the known outputs at positions less than $i$.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          <strong>编码器（Encoder）</strong>：由 $N=6$ 个完全相同的层堆叠而成。每一层包含两个子层：第一子层是多头自注意力机制，第二子层是逐位置全连接前馈网络。我们在每个子层周围引入残差连接，随后进行层归一化（Post-LN），即每个子层的输出为 $\text{LayerNorm}(x + \text{Sublayer}(x))$。为了便于实现残差相加，模型中的所有子层以及嵌入层的输出维度均统一设定为 $d_{\text{model}} = 512$。<br><br>
+          <strong>解码器（Decoder）</strong>：同样由 $N=6$ 个完全相同的层堆叠而成。除了包含编码器层中的两个子层外，解码器还在中间插入了第三个子层，用于对编码器堆栈的输出执行多头交叉注意力。与编码器类似，我们在每个子层周围采用残差连接与层归一化。此外，我们修改了解码器堆栈中的自注意力子层，以防止当前位置关注到后续未来的位置。这种掩码机制（Masking）与输出嵌入向后偏移一个位置的设计相结合，确保了对位置 $i$ 的预测仅依赖于位置小于 $i$ 的已知输出。
+        </div>
+      </div>
+
+      <div class="col-note b-method">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec3-2-3">[跳转细化 -&gt; §3.2.3 三类注意力]</a>
+          </div>
+          <div class="nm-body"><strong>[定义宏观拓扑：6层 Encoder + 6层 Decoder] -&gt; [统一内部接口维度 $d_{\text{model}}=512$ 支撑残差相加] -&gt; [引入下三角掩码实现训练并行与自回归属性兼容]</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">03 / 硬核破译（为什么训练时 Decoder 也能并行？）</div>
+          <div class="nm-body">推理生成时必须逐词自回归，但在训练时，目标句（Ground Truth）全部已知。通过乘以一个右上角全为 $-\infty$ 的下三角掩码矩阵（Causal Mask），位置 $1\dots n$ 的预测可以在一次矩阵运算中同时完成，且严格不泄露未来词信息。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec3-1')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec3-1">
+            <textarea data-note-id="sec3-1" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="para-row" id="sec3-2-1" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§3.2.1</span>
+          <span class="weight-badge w-core">[CORE / 核心]</span>
+          <span class="para-tldr">Scaled Dot-Product Attention 核心公式与 $\frac{1}{\sqrt{d_k}}$ 缩放因子的方差推演</span>
+        </div>
+        <div class="en-block">
+          <p>An attention function can be described as mapping a query and a set of key-value pairs to an output, where the query, keys, values, and output are all vectors. The output is computed as a weighted sum of the values, where the weight assigned to each value is computed by a compatibility function of the query with the corresponding key.</p>
+          <p><span class="hl hl-method">We call our particular attention "<span class="hl hl-term" data-tip="缩放点积注意力：计算 Q 与 K 的矩阵点积并除以 \sqrt{d_k} 稳定方差，经过 Softmax 归一化后对 V 加权求和。">Scaled Dot-Product Attention</span>". The input consists of queries and keys of dimension $d_k$, and values of dimension $d_v$. We compute the dot products of the query with all keys, divide each by $\sqrt{d_k}$, and apply a softmax function to obtain the weights on the values.</span></p>
+          <div class="formula-card">
+            <div class="formula-math">
+              $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
+            </div>
+            <div class="tensor-flow">
+              <span class="tf-label">TENSOR SHAPE FLOW</span>
+              <span>$Q_{[n, d_k]} \times K^T_{[d_k, m]} \rightarrow \text{Scores}_{[n, m]} \xrightarrow{\div \sqrt{d_k} \text{ &amp; Softmax}} \text{Weights}_{[n, m]} \times V_{[m, d_v]} \rightarrow \text{Out}_{[n, d_v]}$</span>
+            </div>
+          </div>
+          <p>The two most commonly used attention functions are additive attention, and dot-product (multiplicative) attention. Dot-product attention is identical to our algorithm, except for the scaling factor of $\frac{1}{\sqrt{d_k}}$. <span class="hl hl-evidence">While for small values of $d_k$ the two mechanisms perform similarly, dot product attention is much faster and more space-efficient in practice, since it can be implemented using highly optimized matrix multiplication code.</span> <span class="hl hl-thesis">While for large values of $d_k$, the dot products grow large in magnitude, pushing the softmax function into regions where it has extremely small gradients. To counteract this effect, we scale the dot products by $\frac{1}{\sqrt{d_k}}$.</span> <span class="hl hl-evidence">*(Footnote 4: To illustrate why the dot products get large, assume that the components of $q$ and $k$ are independent random variables with mean $0$ and variance $1$. Then their dot product, $q \cdot k = \sum_{i=1}^{d_k} q_i k_i$, has mean $0$ and variance $d_k$.)*</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          注意力函数可以描述为将一个查询（Query）和一组键值对（Key-Value pairs）映射为输出的过程，其中查询、键、值和输出均为向量。输出由值（Values）的加权求和计算得出，而分配给每个值的权重则由查询与对应键之间的兼容性函数计算确定。<br><br>
+          我们将本文特定的注意力机制称为“缩放点积注意力（Scaled Dot-Product Attention）”。输入包含维度为 $d_k$ 的查询与键，以及维度为 $d_v$ 的值。我们计算查询与所有键的点积，将每个结果除以 $\sqrt{d_k}$，然后应用 Softmax 函数以获得作用于值上的权重。<br><br>
+          最常用的两种注意力函数是加性注意力（Additive Attention）和点积（乘性）注意力。除了缩放因子 $\frac{1}{\sqrt{d_k}}$ 外，点积注意力与我们的算法完全一致。当 $d_k$ 较小时，两种机制表现相近，但点积注意力在实践中速度更快、显存效率更高，因为它可以直接调用高度优化的矩阵乘法算子（GEMM）。然而当 $d_k$ 较大时，点积的绝对值会变得很大，从而将 Softmax 函数推入梯度极小的饱和区。为了抵消这一现象，我们将点积乘以 $\frac{1}{\sqrt{d_k}}$ 进行缩放。<em>（注脚 4：为说明点积为何会变大，假设 $q$ 和 $k$ 的各分量是均值为 $0$、方差为 $1$ 的独立随机变量，则它们的点积 $q \cdot k = \sum_{i=1}^{d_k} q_i k_i$ 均值为 $0$，方差为 $d_k$。）</em>
+        </div>
+      </div>
+
+      <div class="col-note b-method">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec6-2">[跳转验证 -&gt; §6.2 Table 3 消融实验]</a>
+          </div>
+          <div class="nm-body"><strong>[定义 Q/K/V 映射] -&gt; [提出矩阵化点积公式] -&gt; [论证点积优于加性注意力的工程原因（GEMM 硬件加速）] -&gt; [证明 $\frac{1}{\sqrt{d_k}}$ 防梯度消失的统计学机制]</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">03 / 硬核破译（补全注脚 4 的完整数学推导）</div>
+          <div class="nm-body">
+            设 $q_i, k_i$ 相互独立，且 $\mathbb{E}[q_i]=\mathbb{E}[k_i]=0$，$\text{Var}(q_i)=\text{Var}(k_i)=1$。则：<br>
+            1. 期望：$\mathbb{E}[q \cdot k] = \sum_{i=1}^{d_k} \mathbb{E}[q_i]\mathbb{E}[k_i] = 0$<br>
+            2. 方差：$\text{Var}(q \cdot k) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = \sum_{i=1}^{d_k} \mathbb{E}[q_i^2]\mathbb{E}[k_i^2] = d_k$<br>
+            标准差为 $\sqrt{d_k}$。除以 $\sqrt{d_k}$ 后，$\text{Var}\left(\frac{q \cdot k}{\sqrt{d_k}}\right) = \frac{d_k}{(\sqrt{d_k})^2} = 1$，从而避免指数函数 $e^z$ 溢出导致 Softmax 雅可比矩阵趋于 $0$。
+          </div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec3-2-1')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec3-2-1">
+            <textarea data-note-id="sec3-2-1" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="para-row" id="sec3-2-2" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§3.2.2</span>
+          <span class="weight-badge w-core">[CORE / 核心]</span>
+          <span class="para-tldr">Multi-Head Attention：在不增加总计算复杂度的前提下并行捕获 8 个子空间特征</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-thesis">Instead of performing a single attention function with $d_{\text{model}}$-dimensional keys, values and queries, we found it beneficial to linearly project the queries, keys and values $h$ times with different, learned linear projections to $d_k$, $d_k$ and $d_v$ dimensions, respectively.</span> On each of these projected versions of queries, keys and values we then perform the attention function in parallel, yielding $d_v$-dimensional output values. These are concatenated and once again projected, resulting in the final values.</p>
+          <div class="formula-card">
+            <div class="formula-math">
+              $$\text{MultiHead}(Q, K, V) = \text{Concat}(\text{head}_1, \dots, \text{head}_h)W^O \quad \text{where} \quad \text{head}_i = \text{Attention}(QW_i^Q, KW_i^K, VW_i^V)$$
+            </div>
+            <div class="tensor-flow">
+              <span class="tf-label">TENSOR SHAPE FLOW</span>
+              <span>$X_{[n, 512]} \times W_i^{Q,K,V}{}_{[512, 64]} \rightarrow 8 \times \text{head}_i{}_{[n, 64]} \xrightarrow{\text{Concat}} [n, 512] \times W^O_{[512, 512]} \rightarrow \text{Out}_{[n, 512]}$</span>
+            </div>
+          </div>
+          <p>Where the projections are parameter matrices $W_i^Q \in \mathbb{R}^{d_{\text{model}} \times d_k}$, $W_i^K \in \mathbb{R}^{d_{\text{model}} \times d_k}$, $W_i^V \in \mathbb{R}^{d_{\text{model}} \times d_v}$ and $W^O \in \mathbb{R}^{h d_v \times d_{\text{model}}}$. <span class="hl hl-thesis">Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions. With a single attention head, averaging inhibits this.</span> <span class="hl hl-method">In this work we employ $h = 8$ parallel attention layers, or heads. For each of these we use $d_k = d_v = d_{\text{model}} / h = 64$. Due to the reduced dimension of each head, the total computational cost is similar to that of single-head attention with full dimensionality.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          与其直接对 $d_{\text{model}}$ 维度的键、值和查询执行单一的注意力函数，我们发现更有益的做法是：使用不同的、可学习的线性投影矩阵，将查询、键和值分别向 $d_k$、$d_k$ 和 $d_v$ 维度投影 $h$ 次。随后，我们在这些投影后的查询、键和值版本上并行执行注意力函数，生成 $d_v$ 维的输出值；接着将它们拼接（Concat）起来并再次进行线性投影，得到最终输出。<br><br>
+          其中投影参数矩阵分别为 $W_i^Q \in \mathbb{R}^{d_{\text{model}} \times d_k}$、$W_i^K \in \mathbb{R}^{d_{\text{model}} \times d_k}$、$W_i^V \in \mathbb{R}^{d_{\text{model}} \times d_v}$ 以及 $W^O \in \mathbb{R}^{h d_v \times d_{\text{model}}}$。多头注意力使模型能够同时关注来自不同位置、不同表征子空间的信息。如果只使用单一注意力头，加权平均操作会抑制这种能力。在本研究中，我们采用 $h=8$ 个并行注意力头，每个头的维度设为 $d_k = d_v = d_{\text{model}} / h = 64$。由于每个头的维度按比例缩小，其总计算开销与全维度的单头注意力基本相当。
+        </div>
+      </div>
+
+      <div class="col-note b-thesis">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec2-p1">[跳回伏笔 -&gt; §2.P2 分辨率补偿]</a>
+          </div>
+          <div class="nm-body"><strong>[兑现 §2.P2 承诺] -&gt; [形式化定义多头子空间投影与拼接] -&gt; [证明算力等价性：$8 \times (n^2 \times 64) = n^2 \times 512$]</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">03 / 硬核破译（多头机制相当于 CNN 中的什么？）</div>
+          <div class="nm-body">多头注意力在概念上类似于 CNN 中的<strong>多通道卷积核（Multiple Filters）</strong>：每个头都有自己独立的 $W_i^Q, W_i^K$，相当于从不同角度打光投影，一个头专门找代词指代，另一个头专门找主谓一致，最后通过 $W^O$ 融合。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec3-2-2')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec3-2-2">
+            <textarea data-note-id="sec3-2-2" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="para-row" id="sec3-2-3" data-weight="support">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§3.2.3</span>
+          <span class="weight-badge w-support">[SUPPORT / 基石]</span>
+          <span class="para-tldr">注意力在 Transformer 中的三类具体应用场景（交叉注意力、编码自注意力、掩码解码自注意力）</span>
+        </div>
+        <div class="en-block">
+          <p>The Transformer uses multi-head attention in three different ways:</p>
+          <p>1. <span class="hl hl-method">In "<strong>encoder-decoder attention</strong>" layers, the queries come from the previous decoder layer, and the memory keys and values come from the output of the encoder. This allows every position in the decoder to attend over all positions in the input sequence.</span></p>
+          <p>2. <span class="hl hl-method">The encoder contains <strong>self-attention layers</strong>. In a self-attention layer all of the keys, values and queries come from the same place, in this case, the output of the previous layer in the encoder. Each position in the encoder can attend to all positions in the previous layer of the encoder.</span></p>
+          <p>3. <span class="hl hl-method">Similarly, <strong>self-attention layers in the decoder</strong> allow each position in the decoder to attend to all positions in the decoder up to and including that position. We need to prevent leftward information flow in the decoder to preserve the auto-regressive property. We implement this inside of scaled dot-product attention by masking out (setting to $-\infty$) all values in the input of the softmax which correspond to illegal connections.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          Transformer 以三种不同方式使用多头注意力机制：<br>
+          1. <strong>编码器-解码器交叉注意力层</strong>：查询（$Q$）来自解码器的前一层，而作为记忆的键（$K$）和值（$V$）则来自编码器的最终输出。这使得解码器中的每个位置都能关注输入序列的所有位置（模拟传统 Seq2Seq 注意力）。<br>
+          2. <strong>编码器自注意力层</strong>：$Q, K, V$ 全部来自同一来源（编码器前一层的输出）。编码器中的每个位置均可双向关注前一层的所有位置。<br>
+          3. <strong>解码器掩码自注意力层</strong>：允许解码器中的每个位置关注截至当前位置（含）之前的所有位置。为保持自回归特性，必须阻止向左（来自未来）的信息流。我们在缩放点积注意力内部，将 Softmax 输入中对应非法未来连接的所有数值设为 $-\infty$ 来实现掩码。
+        </div>
+      </div>
+
+      <div class="col-note b-method">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec3-1">[跳回呼应 -&gt; §3.1 宏架构]</a>
+          </div>
+          <div class="nm-body"><strong>[将统一的 MultiHead 算子实例化为三种拓扑组件]</strong>：正是这三种注意力的解耦，使得后来学界直接拆出第 2 种造出了 <strong>BERT（纯双向 Encoder）</strong>，拆出第 3 种造出了 <strong>GPT 系列（纯自回归 Decoder）</strong>。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec3-2-3')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec3-2-3">
+            <textarea data-note-id="sec3-2-3" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="para-row" id="sec3-3" data-weight="support">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§3.3 &amp; §3.4</span>
+          <span class="weight-badge w-support">[SUPPORT / 基石]</span>
+          <span class="para-tldr">逐位置前馈网络（FFN）与三处词嵌入矩阵权重共享（乘以 $\sqrt{d_{\text{model}}}$）</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-method"><strong>Position-wise Feed-Forward Networks (§3.3):</strong> In addition to attention sub-layers, each of the layers in our encoder and decoder contains a fully connected feed-forward network, which is applied to each position separately and identically. This consists of two linear transformations with a ReLU activation in between:</span></p>
+          <div class="formula-card">
+            <div class="formula-math">
+              $$\text{FFN}(x) = \max(0, xW_1 + b_1)W_2 + b_2$$
+            </div>
+            <div class="tensor-flow">
+              <span class="tf-label">TENSOR SHAPE FLOW</span>
+              <span>$x_{[n, 512]} \times W_1{}_{[512, 2048]} \xrightarrow{\text{ReLU}} \text{Hidden}_{[n, 2048]} \times W_2{}_{[2048, 512]} \rightarrow \text{Out}_{[n, 512]}$</span>
+            </div>
+          </div>
+          <p>While the linear transformations are the same across different positions, they use different parameters from layer to layer. Another way of describing this is as two convolutions with kernel size 1. The dimensionality of input and output is $d_{\text{model}} = 512$, and the inner-layer has dimensionality $d_{ff} = 2048$.</p>
+          <p><span class="hl hl-method"><strong>Embeddings and Softmax (§3.4):</strong> Similarly to other sequence transduction models, we use learned embeddings to convert the input tokens and output tokens to vectors of dimension $d_{\text{model}}$. We also use the usual learned linear transformation and softmax function to convert the decoder output to predicted next-token probabilities. In our model, we <span class="hl hl-term" data-tip="权重绑定（Weight Tying）：源语言嵌入、目标语言嵌入以及解码器最终输出投影层共享同一个权重矩阵，大幅减少参数量并加速收敛。">share the same weight matrix</span> between the two embedding layers and the pre-softmax linear transformation. In the embedding layers, we multiply those weights by $\sqrt{d_{\text{model}}}$.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          <strong>逐位置前馈网络（§3.3）</strong>：除了注意力子层外，编码器和解码器的每一层还包含一个全连接前馈网络，独立且相同地作用于每个词元位置。它由两个线性变换和中间的一个 ReLU 激活函数组成。虽然不同位置共享相同的线性变换参数，但层与层之间的参数彼此独立。这也可以等价描述为两个核大小为 $1$ 的一维卷积。输入和输出维度为 $d_{\text{model}} = 512$，中间隐藏层维度扩展为 $d_{ff} = 2048$。<br><br>
+          <strong>嵌入与 Softmax（§3.4）</strong>：与其他序列转导模型类似，我们使用可学习的词嵌入将输入词元和输出词元转换为维度为 $d_{\text{model}}$ 的向量，并使用常规的线性变换与 Softmax 函数将解码器输出转换为下一个词元的预测概率。在我们的模型中，两个输入嵌入层与 Pre-Softmax 线性变换层<strong>共享同一个权重矩阵</strong>。此外，在嵌入层中，我们将这些嵌入权重乘以 $\sqrt{d_{\text{model}}}$。
+        </div>
+      </div>
+
+      <div class="col-note b-method">
+        <div class="note-module">
+          <div class="nm-label">03 / 硬核破译（为什么嵌入权重必须乘以 $\sqrt{d_{\text{model}}}$？）</div>
+          <div class="nm-body">这是一个极其容易被忽略的细节！因为嵌入矩阵 $W_{emb}$ 与输出层共享，为了防止输出层点积过大，初始化时 $W_{emb}$ 每个元素的方差通常设为 $\frac{1}{d_{\text{model}}}$（即向量模长约为 $1$）。而下一节的位置编码 $PE$ 取值在 $[-1, 1]$ 之间，如果直接相加，词嵌入信号会被位置编码完全淹没！乘以 $\sqrt{d_{\text{model}}}$ 后，词嵌入分量方差恢复到 $1$，与位置编码处于同一量级。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec3-3')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec3-3">
+            <textarea data-note-id="sec3-3" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="para-row" id="sec3-5" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§3.5</span>
+          <span class="weight-badge w-core">[CORE / 核心]</span>
+          <span class="para-tldr">Positional Encoding：用多波长几何级数正余弦函数注入相对位置感知</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-thesis">Since our model contains no recurrence and no convolution, in order for the model to make use of the order of the sequence, we must inject some information about the relative or absolute position of the tokens in the sequence.</span> To this end, we add "positional encodings" to the input embeddings at the bottoms of the encoder and decoder stacks. The positional encodings have the same dimension $d_{\text{model}}$ as the embeddings, so that the two can be summed.</p>
+          <div class="formula-card">
+            <div class="formula-math">
+              $$PE_{(pos, 2i)} = \sin\left(\frac{pos}{10000^{2i/d_{\text{model}}}}\right), \qquad PE_{(pos, 2i+1)} = \cos\left(\frac{pos}{10000^{2i/d_{\text{model}}}}\right)$$
+            </div>
+            <div class="tensor-flow">
+              <span class="tf-label">TENSOR SHAPE FLOW</span>
+              <span>$\text{TokenEmb}_{[n, 512]} \cdot \sqrt{512} + PE_{[n, 512]} \rightarrow \text{InputState } X_0{}_{[n, 512]}$</span>
+            </div>
+          </div>
+          <p>Where $pos$ is the position and $i$ is the dimension. That is, each dimension of the positional encoding corresponds to a sinusoid. The wavelengths form a geometric progression from $2\pi$ to $10000 \cdot 2\pi$. <span class="hl hl-thesis">We chose this function because we hypothesized it would allow the model to easily learn to attend by relative positions, since for any fixed offset $k$, $PE_{pos+k}$ can be represented as a linear function of $PE_{pos}$.</span> <span class="hl hl-evidence">We also experimented with using learned positional embeddings instead, and found that the two versions produced nearly identical results (see Table 3 row (E)).</span> <span class="hl hl-thesis">We chose the sinusoidal version because it may allow the model to extrapolate to sequence lengths longer than the ones encountered during training.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          由于我们的模型不包含任何循环或卷积结构，为了让模型能够利用序列的顺序信息，我们必须注入关于词元在序列中相对或绝对位置的信息。为此，我们在编码器和解码器堆栈底部的输入嵌入中加上“位置编码”。位置编码的维度与词嵌入同为 $d_{\text{model}}$，因此二者可直接相加。<br><br>
+          其中 $pos$ 为词元位置，$i$ 为维度索引。位置编码的每个维度对应一个正弦波，其波长从 $2\pi$ 到 $10000 \cdot 2\pi$ 呈几何级数分布。我们之所以选择这一函数，是因为我们假设它能让模型轻松学会按相对位置进行关注——对于任意固定的位置偏移量 $k$，$PE_{pos+k}$ 都可以表示为 $PE_{pos}$ 的线性函数。我们还实验了可学习的位置嵌入（见表 3 第 E 行），发现两个版本的效果几乎完全一致。我们最终选择正弦版本，是因为它有望让模型外推（Extrapolate）到比训练时所见序列更长的序列上。
+        </div>
+      </div>
+
+      <div class="col-note b-thesis">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec6-2">[跳转验证 -&gt; §6.2 Table 3(E)]</a>
+          </div>
+          <div class="nm-body"><strong>[指明纯注意力模型的固有盲区：置换不变性（Permutation Invariance）] -&gt; [设计多频三角函数坐标] -&gt; [论证其两大优势：相对位置线性可表 + 长度外推潜力]</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">03 / 硬核破译（线性变换矩阵证明）</div>
+          <div class="nm-body">
+            令频率 $\omega_i = 10000^{-2i/d_{\text{model}}}$，由三角和差化积公式：<br>
+            $$\begin{bmatrix} \sin(\omega_i(pos+k)) \\ \cos(\omega_i(pos+k)) \end{bmatrix} = \begin{bmatrix} \cos(\omega_i k) & \sin(\omega_i k) \\ -\sin(\omega_i k) & \cos(\omega_i k) \end{bmatrix} \begin{bmatrix} \sin(\omega_i pos) \\ \cos(\omega_i pos) \end{bmatrix}$$
+            转移矩阵仅与相对距离 $k$ 有关，与绝对位置 $pos$ 无关！
+          </div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec3-5')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec3-5">
+            <textarea data-note-id="sec3-5" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== SECTION 4: WHY SELF-ATTENTION ==================== -->
+    <div class="section-divider" id="sec-why">
+      <h2>4. Why Self-Attention · 为什么选择自注意力？（理论复杂度对决）</h2>
+      <span class="section-task-badge">SECTION TASK: 从每层算力、串行步数、最大路径长度三维证明自注意力的理论优越性</span>
+    </div>
+
+    <article class="para-row" id="sec4-1" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§4.P1-P4</span>
+          <span class="weight-badge w-core">[CORE / 核心]</span>
+          <span class="para-tldr">Table 1 四大层类型复杂度对决：何时 $O(n^2 \cdot d)$ 快于 $O(n \cdot d^2)$？</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-method">In this section we compare various aspects of self-attention layers to the recurrent and convolutional layers commonly used for mapping one variable-length sequence of symbol representations $(x_1, \dots, x_n)$ to another sequence of equal length $(z_1, \dots, z_n)$, with $x_i, z_i \in \mathbb{R}^d$. Motivating our use of self-attention we consider three desiderata:</span> (1) Total computational complexity per layer; (2) The amount of computation that can be parallelized, measured by minimum sequential operations; (3) <span class="hl hl-thesis">The path length between long-range dependencies in the network. The shorter these paths between any combination of positions in the input and output sequences, the easier it is to learn long-range dependencies.</span></p>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Layer Type (Table 1)</th>
+                <th>Complexity per Layer</th>
+                <th>Sequential Operations</th>
+                <th>Maximum Path Length</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Self-Attention</strong></td>
+                <td>$O(n^2 \cdot d)$</td>
+                <td>$O(1)$</td>
+                <td>$O(1)$</td>
+              </tr>
+              <tr>
+                <td><strong>Recurrent (RNN)</strong></td>
+                <td>$O(n \cdot d^2)$</td>
+                <td>$O(n)$</td>
+                <td>$O(n)$</td>
+              </tr>
+              <tr>
+                <td><strong>Convolutional (CNN)</strong></td>
+                <td>$O(k \cdot n \cdot d^2)$</td>
+                <td>$O(1)$</td>
+                <td>$O(\log_k(n))$</td>
+              </tr>
+              <tr>
+                <td><strong>Self-Attention (restricted $r$)</strong></td>
+                <td>$O(r \cdot n \cdot d)$</td>
+                <td>$O(1)$</td>
+                <td>$O(n / r)$</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p><span class="hl hl-evidence">As noted in Table 1, a self-attention layer connects all positions with a constant number of sequentially executed operations, whereas a recurrent layer requires $O(n)$ sequential operations. In terms of computational complexity, self-attention layers are faster than recurrent layers when the sequence length $n$ is smaller than the representation dimensionality $d$, which is most often the case with sentence representations used by state-of-the-art models in machine translations.</span> <span class="hl hl-concession">To improve computational performance for tasks involving very long sequences, self-attention could be restricted to considering only a neighborhood of size $r$ in the input sequence, increasing the maximum path length to $O(n/r)$.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          在本节中，我们将自注意力层与常用于将变长符号表征序列 $(x_1, \dots, x_n)$ 映射为等长序列 $(z_1, \dots, z_n)$（其中 $x_i, z_i \in \mathbb{R}^d$）的循环层和卷积层进行多维度对比。基于三项核心诉求，我们选择了自注意力机制：(1) 每层总计算复杂度；(2) 可并行化计算量（最小顺序操作步数）；(3) 网络中长距离依赖关系之间的路径长度。输入与输出序列中任意位置组合之间的路径越短，前向与反向梯度信号越容易传递，学习长距离依赖也就越容易。<br><br>
+          如表 1 所示，自注意力层仅需常数级 $O(1)$ 的顺序操作即可连接所有位置，而循环层则需要 $O(n)$ 次顺序操作。在计算复杂度方面，当序列长度 $n$ 小于表征维度 $d$ 时，自注意力层比循环层更快——而这恰恰是当前顶尖机器翻译模型处理句子表征时的常态。对于涉及超长序列的任务，为提升计算性能，可将自注意力限制在仅考虑输入序列中大小为 $r$ 的局部邻域，此时最大路径长度将增加至 $O(n/r)$。
+        </div>
+      </div>
+
+      <div class="col-note b-evidence">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec1-p2">[跳回呼应 -&gt; §1.P2 串行死结]</a>
+          </div>
+          <div class="nm-body"><strong>[确立三大理论评判标尺] -&gt; [Table 1 定量对比四类算子] -&gt; [界定算力胜出边界条件 $n < d$] -&gt; [提出超长序列局部窗口方案 $O(r \cdot n \cdot d)$]</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">04 / 审稿人视角（边界感与前瞻性）</div>
+          <div class="nm-body">作者在 Table 1 最后一行主动列出 <code>Self-Attention (restricted)</code>，坦诚当 $n \gg d$ 时 $O(n^2 \cdot d)$ 会成为瓶颈，并给出 $O(r \cdot n \cdot d)$ 与路径长度 $O(n/r)$ 的折中公式——这直接启发了后来的 Sparse Transformer 与 Longformer。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec4-1')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec4-1">
+            <textarea data-note-id="sec4-1" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== SECTION 5 & 6: TRAINING & RESULTS ==================== -->
+    <div class="section-divider" id="sec-exp">
+      <h2>5 &amp; 6. Training &amp; Results · 训练配置、主实验与消融验证</h2>
+      <span class="section-task-badge">SECTION TASK: Noam 预热学习率 -&gt; Table 2 WMT14 刷榜 -&gt; Table 3 消融实验验证</span>
+    </div>
+
+    <article class="para-row" id="sec6-1" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§5.3 &amp; §6.1</span>
+          <span class="weight-badge w-core">[CORE / 核心]</span>
+          <span class="para-tldr">Warmup 动态学习率策略与 Table 2 WMT 2014 翻译性能及算力成本全对比</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-method"><strong>Optimizer (§5.3):</strong> We used the Adam optimizer with $\beta_1 = 0.9$, $\beta_2 = 0.98$ and $\epsilon = 10^{-9}$. We varied the learning rate over the course of training, according to the formula:</span></p>
+          <div class="formula-card">
+            <div class="formula-math">
+              $$lrate = d_{\text{model}}^{-0.5} \cdot \min\left(step\_num^{-0.5}, \; step\_num \cdot warmup\_steps^{-1.5}\right)$$
+            </div>
+            <div class="tensor-flow">
+              <span class="tf-label">SCHEDULE DYNAMICS</span>
+              <span>Steps $1 \to 4000$: Linear Warmup ($\propto step\_num$) | Steps $> 4000$: Inverse Square Root Decay ($\propto 1/\sqrt{step\_num}$)</span>
+            </div>
+          </div>
+          <p><span class="hl hl-method">We employed Residual Dropout ($P_{drop} = 0.1$) and Label Smoothing ($\epsilon_{ls} = 0.1$), which hurts perplexity, as the model learns to be more unsure, but improves accuracy and BLEU score.</span></p>
+          <p><span class="hl hl-evidence"><strong>Machine Translation (§6.1):</strong> On the WMT 2014 English-to-German translation task, the big transformer model (Transformer (big)) outperforms the best previously reported models (including ensembles) by more than $2.0$ BLEU, establishing a new state-of-the-art BLEU score of $28.4$ in $3.5$ days on $8$ P100 GPUs.</span></p>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Model (Table 2 Excerpt)</th>
+                <th>EN-DE BLEU</th>
+                <th>EN-FR BLEU</th>
+                <th>Training Cost (FLOPs)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>ConvS2S Ensemble (Gehring et al., 2017)</td>
+                <td>$26.36$</td>
+                <td>$41.29$</td>
+                <td>$1.5 \times 10^{20}$ (EN-DE) / $1.2 \times 10^{21}$ (EN-FR)</td>
+              </tr>
+              <tr>
+                <td><strong>Transformer (base model)</strong></td>
+                <td>$27.3$</td>
+                <td>$38.1$</td>
+                <td><strong>$3.3 \times 10^{18}$</strong></td>
+              </tr>
+              <tr>
+                <td><strong>Transformer (big)</strong></td>
+                <td><strong>$28.4$</strong></td>
+                <td><strong>$41.8$</strong></td>
+                <td><strong>$2.3 \times 10^{19}$</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          <strong>优化器与训练正则化（§5.3）</strong>：我们使用 Adam 优化器（$\beta_1 = 0.9, \beta_2 = 0.98, \epsilon = 10^{-9}$），并在前 $4000$ 步（$warmup\_steps=4000$）线性增加学习率，随后按步数的平方根倒数衰减。我们还采用了残差 Dropout（$P_{drop}=0.1$）与标签平滑（$\epsilon_{ls}=0.1$）——标签平滑虽会降低困惑度指标，但显著提升了翻译准确率与 BLEU 分数。<br><br>
+          <strong>机器翻译主结果（§6.1 Table 2）</strong>：在 WMT 2014 英译德任务上，Transformer (big) 比此前最佳模型（含多模型集成）高出 $2.0$ BLEU 以上，创下 $28.4$ BLEU 的新纪录。即便是基础版（Base）模型，在英译德上也超越了此前所有单模型与集成模型，而训练算力消耗仅为 ConvS2S 集成模型的约 $1/45$（$3.3 \times 10^{18}$ vs $1.5 \times 10^{20}$ FLOPs）。
+        </div>
+      </div>
+
+      <div class="col-note b-evidence">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#abs-p1">[跳回呼应 -&gt; Abs.P1 核心战绩]</a>
+          </div>
+          <div class="nm-body"><strong>[公开完整训练超参配方] -&gt; [Table 2 精度与算力双重碾压]</strong>。算力节省了 $1 \sim 2$ 个数量级，直接证明了第 4 节中 $O(1)$ 并行度的工程威力。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec6-1')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec6-1">
+            <textarea data-note-id="sec6-1" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="para-row" id="sec6-2" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§6.2 &amp; §6.3</span>
+          <span class="weight-badge w-core">[CORE / 核心]</span>
+          <span class="para-tldr">Table 3 消融实验（验证头数 $h$、键维度 $d_k$、位置编码）与句法分析泛化</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-evidence"><strong>Model Variations (§6.2 Table 3):</strong> In Table 3 rows (A), we vary the number of attention heads and the attention key and value dimensions, keeping the amount of computation constant ($h \times d_k = 512$). While single-head attention ($h=1, d_k=512$) is $0.9$ BLEU worse than the best setting ($h=8, d_k=64$, BLEU $25.8$), quality also drops off with too many heads ($h=32, d_k=16$, BLEU $25.4$).</span> <span class="hl hl-evidence">In Table 3 rows (B), we observe that reducing the attention key size $d_k$ (to $16$ or $32$) hurts model quality. This suggests that determining compatibility is not easy and that a more sophisticated compatibility function than dot product may be beneficial. In row (E), replacing sinusoidal positional encoding with learned positional embeddings yields nearly identical results ($25.7$ vs $25.8$ BLEU).</span></p>
+          <p><span class="hl hl-evidence"><strong>English Constituency Parsing (§6.3):</strong> To evaluate if the Transformer can generalize to other tasks we performed experiments on English constituency parsing (WSJ). Despite the lack of task-specific tuning our model achieves $92.7$ F1, outperforming almost all previously reported models.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          <strong>模型变体消融实验（§6.2 Table 3）</strong>：在表 3 的 (A) 组实验中，我们在保持总计算量恒定（$h \times d_k = 512$）的前提下，改变注意力头数量 $h$ 及键值维度。结果显示，单头注意力（$h=1, d_k=512$）比最佳设置（$h=8, d_k=64$，开发集 BLEU $25.8$）低了 $0.9$ BLEU；但当头数过多时（$h=32, d_k=16$，BLEU $25.4$），质量同样明显下滑。在 (B) 组实验中，单独缩小键维度 $d_k$ 会损害模型性能，这表明计算查询与键的匹配度并非易事。在 (E) 行中，将正弦位置编码替换为可学习位置嵌入，结果几乎完全一致（$25.7$ vs $25.8$ BLEU）。<br><br>
+          <strong>英语成分句法分析（§6.3）</strong>：为评估跨任务泛化能力，我们在 WSJ 英语成分句法分析任务上进行了实验。在未做专门调优的情况下，模型取得了 $92.7$ 的 F1 分数，超越了几乎所有既往报道模型。
+        </div>
+      </div>
+
+      <div class="col-note b-evidence">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 逻辑演进与跨节锚点</span>
+            <a class="echo-link" href="#sec3-2-2">[跳回呼应 -&gt; §3.2.2 多头假说]</a>
+          </div>
+          <div class="nm-body"><strong>[等算力控制变量消融] -&gt; [证实 $h=8$ 为子空间数量与单头表征维度的黄金平衡点] -&gt; [跨任务验证架构普适性]</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">04 / 审稿人视角（证据强度评级：强因果）</div>
+          <div class="nm-body">通过严格固定 $h \times d_k = 512$，排除了参数量增减的干扰，直接证明了多头机制的性能增益源自<strong>多子空间并行注意力</strong>本身。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec6-2')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec6-2">
+            <textarea data-note-id="sec6-2" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== SECTION 7: CONCLUSION ==================== -->
+    <div class="section-divider" id="sec-conc">
+      <h2>7. Conclusion · 结论与多模态未来展望</h2>
+      <span class="section-task-badge">SECTION TASK: 总结首个纯注意力转导模型，预言向图像、音频、视频多模态的扩张</span>
+    </div>
+
+    <article class="para-row" id="sec7-1" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">§7.P1-P2</span>
+          <span class="weight-badge w-core">[CORE / 核心]</span>
+          <span class="para-tldr">总结纯注意力架构范式，并预言多模态大模型与局部受限注意力方向</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-thesis">In this work, we presented the Transformer, the first sequence transduction model based entirely on attention, replacing the recurrent layers most commonly used in encoder-decoder architectures with multi-headed self-attention.</span> For translation tasks, the Transformer can be trained significantly faster than architectures based on recurrent or convolutional layers. On both WMT 2014 English-to-German and WMT 2014 English-to-French translation tasks, we achieve a new state of the art.</p>
+          <p><span class="hl hl-thesis">We are excited about the future of attention-based models and plan to apply them to other tasks. We plan to extend the Transformer to problems involving input and output modalities other than text and to investigate local, restricted attention mechanisms to efficiently handle large inputs and outputs such as images, audio and video. Making generation less sequential is another research goal of ours.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          在本研究中，我们提出了 Transformer——首个完全基于注意力机制的序列转导模型，用多头自注意力彻底取代了编码器-解码器架构中最常用的循环层。对于翻译任务，Transformer 的训练速度远快于基于循环或卷积层的架构。在 WMT 2014 英译德和英译法两项任务中，我们均创下了全新的最高性能纪录。<br><br>
+          我们对基于注意力的模型未来充满期待，并计划将其应用于更多任务。我们计划将 Transformer 扩展至文本以外的输入与输出模态，并研究局部受限注意力机制，以高效处理图像、音频和视频等大规模输入与输出。此外，降低生成过程的顺序性也是我们的另一项研究目标。
+        </div>
+      </div>
+
+      <div class="col-note b-thesis">
+        <div class="note-module">
+          <div class="nm-label">01 / 历史回响与跨时代验证</div>
+          <div class="nm-body">结论第二段精准预言了随后七年 AI 领域的演进路线图：跨模态扩展催生了 ViT（视觉）、Whisper（语音）、DiT/Sora（视频）；局部与高效注意力催生了 Sparse Attention 与 FlashAttention；降低生成顺序性催生了 Speculative Decoding（投机采样）。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('sec7-1')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-sec7-1">
+            <textarea data-note-id="sec7-1" placeholder="在此记录你对本段的疑问或思考..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== 5. 底部全局论证复盘与自测 ==================== -->
+    <section class="synthesis-section" id="sec-synthesis">
+      <h3 class="syn-title">SYNTHESIS &amp; SOCRATIC CHECK / 全文论证结构总览与审稿人级自测</h3>
+
+      <div class="flow-skeleton">
+        <div class="flow-node">
+          <h5>01 / PROBLEM</h5>
+          <p>RNN 隐藏状态 $h_t$ 依赖 $h_{t-1}$，时间步串行锁死导致 GPU 无法样本内并行，且远距信号历经 $O(n)$ 步严重衰减。</p>
+        </div>
+        <div class="flow-node">
+          <h5>02 / THESIS</h5>
+          <p>彻底摒弃循环与卷积，仅靠自注意力构建 Transformer，将任意位置间的依赖路径缩减为常数级 $O(1)$。</p>
+        </div>
+        <div class="flow-node">
+          <h5>03 / MECHANISM</h5>
+          <p>缩放点积注意力（$\div \sqrt{d_k}$ 稳方差）+ $h=8$ 多头并行子空间 + 正余弦位置编码注入相对时序。</p>
+        </div>
+        <div class="flow-node">
+          <h5>04 / EVIDENCE</h5>
+          <p>WMT14 英德 $28.4$ / 英法 $41.8$ 刷榜，训练算力降低一个数量级；等算力消融实验证实多头结构必要性。</p>
+        </div>
+        <div class="flow-node">
+          <h5>05 / BOUNDARY</h5>
+          <p>自注意力复杂度为 $O(n^2 \cdot d)$，当序列长度 $n \gg d$ 时面临平方级显存瓶颈，需引入局部受限注意力窗口。</p>
+        </div>
+      </div>
+
+      <div class="core-claim-banner">
+        <h4>CORE CONTRIBUTION FORMULA / 作者核心主张一句话公式</h4>
+        <p>因为<strong>自注意力机制能以 $O(1)$ 的常数路径长度与 $O(1)$ 的最小串行步数关联序列中的任意位置</strong>，所以尽管<strong>放弃循环结构需要额外引入位置编码且面临 $O(n^2 \cdot d)$ 的序列长度平方项开销</strong>，通过<strong>除以 $\sqrt{d_k}$ 的缩放点积与多头子空间注意力（Multi-Head Attention）</strong>，依然能在<strong>彻底剔除 RNN/CNN 的前提下，以少一个数量级的训练算力实现翻译质量与跨任务泛化的全面超越</strong>。</p>
+      </div>
+
+      <div class="vs-grid">
+        <div class="vs-card vs-strong">
+          <h4>[STRONGEST STRIKE / 全文论证最强处]</h4>
+          <p><strong>第 4 节（Table 1 理论复杂度对决）与第 6.2 节（等算力多头消融实验）的双重闭环</strong>。作者不仅用工程刷榜证明模型有效，更从信息传递图的最短路径（$O(1)$ vs $O(n)$）给出了数学第一性原理，并通过锁死总维度 $h \times d_k = 512$ 的消融实验，严格证明了多头机制并非靠堆砌参数取胜，而是子空间解耦的结构性胜利。</p>
+        </div>
+        <div class="vs-card vs-weak">
+          <h4>[ACHILLES' HEEL / 论证最脆弱处与历史局限]</h4>
+          <p><strong>对超长上下文 $O(n^2)$ 显存墙的低估，以及正弦位置编码外推假设的理想化</strong>。(1) 当序列长度 $n$ 扩展至数万词元时，$QK^T$ 的 $n \times n$ 矩阵会引发显存爆炸；(2) 作者在 §3.5 假设正弦位置编码能自然外推到更长序列，但后续大模型实践证明直接外推会迅速崩溃，最终催生了 RoPE（旋转位置编码）与 ALiBi。</p>
+        </div>
+      </div>
+
+      <div class="socratic-box">
+        <h4>SOCRATIC SELF-TEST / 3 道审稿人级内化追问（点击展开深度解析）</h4>
+
+        <details class="socratic-item">
+          <summary>追问 01：如果去掉缩放点积注意力中的 $\frac{1}{\sqrt{d_k}}$，同时将优化器学习率调小 10 倍，能否解决梯度消失？为什么？</summary>
+          <div class="ans">
+            <strong>不能。</strong>问题根源在于 <strong>Softmax 激活函数的输入方差过大导致的饱和区梯度消失</strong>，而非参数更新步长过大。当 $d_k=64$ 时，$q \cdot k$ 的方差为 $64$，输入到 Softmax 的数值极差很大，使得输出分布退化为接近非 $0$ 即 $1$ 的硬 One-hot 分布，此时 Softmax 的雅可比矩阵局部导数 $p_i(1-p_i) \approx 0$。导数本身已归零，调小学习率只会让参数更新量更加趋近于 $0$；必须在进入 Softmax 前除以 $\sqrt{d_k}$ 将方差归一化回 $1$。
+          </div>
+        </details>
+
+        <details class="socratic-item">
+          <summary>追问 02：既然多头注意力（$h=8$）优于单头（$h=1$），为何在 Table 3(A) 中将头数增至 $h=32$ 时，BLEU 反而明显下降？</summary>
+          <div class="ans">
+            因为实验严格固定了总维度 $d_{\text{model}} = h \times d_k = 512$。当 $h=32$ 时，每个注意力头分到的查询/键维度仅剩 $d_k = 16$。在过于狭窄的 $16$ 维空间中，向量点积难以具备足够的自由度来区分复杂词元间的细微匹配关系（这与 Table 3(B) 单独缩小 $d_k$ 导致性能退化的结论完全吻合）。这揭示了<strong>“子空间多样性（$h$）”与“单头表征容量（$d_k$）”之间的权衡律</strong>。
+          </div>
+        </details>
+
+        <details class="socratic-item">
+          <summary>追问 03：如果把每一层中的逐位置前馈网络（FFN）全部移除，只堆叠 6 层多头自注意力，模型会发生什么本质退化？</summary>
+          <div class="ans">
+            模型表达能力将严重坍塌。除去 Softmax 计算标量权重外，自注意力对 Value 向量的操作本质上是<strong>线性加权求和与线性投影（$W^V W^O$）</strong>，缺乏对单个词元特征内部的非线性特征变换。在 Transformer 中，<strong>Self-Attention 负责跨位置的信息路由与聚合（Information Routing）</strong>，而包含 ReLU 非线性激活并放大至 $d_{ff}=2048$ 维的 <strong>FFN 则承担了非线性特征加工与键值知识记忆（Key-Value Memory）</strong>的核心职能。
+          </div>
+        </details>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 自适应屏幕边界的全局 Tooltip -->
+  <div id="globalTooltip"></div>
+  <!-- 跨节跳转返回浮动按钮 -->
+  <button id="backJumpBtn">[&lt;- 返回原阅读位置]</button>
+  <!-- 通知提示 -->
+  <div class="toast" id="toast">已将全文精读笔记（Markdown 格式）复制到剪贴板</div>
+
+  <script>
+    // 1. 初始化 KaTeX 数学公式渲染
+    document.addEventListener("DOMContentLoaded", function() {
+      if (window.renderMathInElement) {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: "$$", right: "$$", display: true},
+            {left: "$", right: "$", display: false}
+          ],
+          throwOnError: false
+        });
+      }
+    });
+
+    // 2. 自适应边界的 JS 悬浮解释窗（解决左右边缘溢出）
+    const tooltip = document.getElementById('globalTooltip');
+    document.querySelectorAll('.hl-term[data-tip]').forEach(term => {
+      term.addEventListener('mouseenter', (e) => {
+        const text = term.getAttribute('data-tip');
+        tooltip.textContent = '[TERM DEFINITION] ' + text;
+        tooltip.classList.add('visible');
+        const rect = term.getBoundingClientRect();
+        const tipWidth = 310;
+        let left = rect.left + rect.width / 2 - tipWidth / 2;
+        if (left < 12) left = 12;
+        if (left + tipWidth > window.innerWidth - 12) {
+          left = window.innerWidth - tipWidth - 12;
+        }
+        let top = rect.top - tooltip.offsetHeight - 10;
+        if (top < 70) {
+          top = rect.bottom + 10;
+        }
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
+      });
+      term.addEventListener('mouseleave', () => {
+        tooltip.classList.remove('visible');
+      });
+    });
+
+    // 3. 双向跨节跳转与“返回原阅读位置”
+    let lastScrollY = null;
+    const backJumpBtn = document.getElementById('backJumpBtn');
+
+    window.jumpTo = function(targetSelector) {
+      const target = document.querySelector(targetSelector);
+      if (!target) return;
+      lastScrollY = window.scrollY;
+      backJumpBtn.style.display = 'block';
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      target.style.boxShadow = '0 0 0 3px #eab308';
+      setTimeout(() => { target.style.boxShadow = ''; }, 2200);
+    };
+
+    document.querySelectorAll('.echo-link').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.jumpTo(link.getAttribute('href'));
+      });
+    });
+
+    backJumpBtn.addEventListener('click', () => {
+      if (lastScrollY !== null) {
+        window.scrollTo({ top: lastScrollY, behavior: 'smooth' });
+        backJumpBtn.style.display = 'none';
+        lastScrollY = null;
+      }
+    });
+
+    // 4. 逐段随手笔记展开与 localStorage 持久化
+    window.toggleNote = function(id) {
+      const box = document.getElementById('note-box-' + id);
+      if (box) box.classList.toggle('open');
+    };
+
+    document.querySelectorAll('textarea[data-note-id]').forEach(ta => {
+      const id = ta.getAttribute('data-note-id');
+      const saved = localStorage.getItem('aiayn_v4_note_' + id);
+      if (saved) {
+        ta.value = saved;
+        document.getElementById('note-box-' + id)?.classList.add('open');
+      }
+      ta.addEventListener('input', () => {
+        localStorage.setItem('aiayn_v4_note_' + id, ta.value);
+      });
+    });
+
+    // 5. 五维高亮过滤交互
+    const legendBtns = document.querySelectorAll('.legend-btn');
+    legendBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const dim = btn.getAttribute('data-dim');
+        const current = document.body.getAttribute('data-filter');
+        legendBtns.forEach(b => b.classList.remove('active'));
+        if (current === dim) {
+          document.body.removeAttribute('data-filter');
+        } else {
+          document.body.setAttribute('data-filter', dim);
+          btn.classList.add('active');
+        }
+      });
+    });
+
+    // 6. 80/20 核心聚焦、显隐中文、显隐批注
+    const btnPareto = document.getElementById('btnPareto');
+    const btnToggleZh = document.getElementById('btnToggleZh');
+    const btnToggleNotes = document.getElementById('btnToggleNotes');
+
+    btnPareto.addEventListener('click', () => {
+      document.body.classList.toggle('pareto-mode');
+      btnPareto.classList.toggle('active-mode');
+    });
+    btnToggleZh.addEventListener('click', () => {
+      document.body.classList.toggle('hide-zh');
+      btnToggleZh.classList.toggle('active-mode');
+    });
+    btnToggleNotes.addEventListener('click', () => {
+      document.body.classList.toggle('hide-notes');
+      btnToggleNotes.classList.toggle('active-mode');
+    });
+
+    // 7. 章节滚动监听高亮
+    const sections = document.querySelectorAll('[id^="sec-"]');
+    const navLinks = document.querySelectorAll('.nav-link');
+    window.addEventListener('scroll', () => {
+      let currentId = 'sec-mental';
+      sections.forEach(sec => {
+        const rect = sec.getBoundingClientRect();
+        if (rect.top <= 160) currentId = sec.id;
+      });
+      navLinks.forEach(link => {
+        link.classList.toggle('active', link.getAttribute('href') === '#' + currentId);
+      });
+    });
+
+    // 8. 导出 Markdown 笔记（含用户随手笔记）
+    const btnExportMd = document.getElementById('btnExportMd');
+    const toast = document.getElementById('toast');
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3200);
+    }
+
+    btnExportMd.addEventListener('click', () => {
+      const rows = document.querySelectorAll('.para-row');
+      let md = `# 论文深度精读笔记：Attention Is All You Need (Vaswani et al., 2017)\n\n`;
+      md += `> **核心贡献公式**：通过除以 $\\sqrt{d_k}$ 的缩放点积与多头自注意力机制（Multi-Head Self-Attention），将序列任意位置间的依赖路径从 $O(n)$ 压缩至 $O(1)$，在彻底摒弃 RNN/CNN 的前提下实现 100% 样本内并行训练与翻译质量 SOTA。\n\n`;
+      md += `## 一、 逐段核心译文、批注与个人随手记\n\n`;
+
+      rows.forEach(row => {
+        const id = row.querySelector('.para-id')?.textContent || '';
+        const weight = row.querySelector('.weight-badge')?.textContent || '';
+        const tldr = row.querySelector('.para-tldr')?.textContent || '';
+        const zh = row.querySelector('.zh-block')?.textContent.trim() || '';
+        const userNote = row.querySelector('textarea[data-note-id]')?.value.trim() || '';
+
+        md += `### ${id} ${weight} ${tldr}\n`;
+        md += `- **中文意译**：${zh}\n`;
+        row.querySelectorAll('.note-module').forEach(m => {
+          const label = m.querySelector('.nm-label span')?.textContent.trim() || m.querySelector('.nm-label')?.textContent.trim() || '批注';
+          const body = m.querySelector('.nm-body')?.textContent.trim() || '';
+          md += `- **${label}**：${body}\n`;
+        });
+        if (userNote) {
+          md += `- **[我的随手批注]**：${userNote}\n`;
+        }
+        md += `\n`;
+      });
+
+      navigator.clipboard.writeText(md).then(() => {
+        showToast('[EXPORT SUCCESS] 已将完整 Markdown 精读笔记（含个人批注）复制到剪贴板');
+      }).catch(() => {
+        const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'Attention-Is-All-You-Need-V4-Notes.md';
+        a.click();
+        showToast('[DOWNLOADED] 已为您下载 Markdown 精读笔记文件');
+      });
+    });
+  </script>
+</body>
+</html>

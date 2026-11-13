@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-serif: var(--font-lora), Georgia, serif;
+  --font-sans: var(--font-ibm-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: var(--font-ibm-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+html,
+body {
+  background-color: #faf8f5;
+  color: #1c222d;
+  font-family: var(--font-ibm-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  scroll-behavior: smooth;
+}

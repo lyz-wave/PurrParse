@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>认知内化与行动工作台 (V4) | How to Fix Your Entire Life in 1 Day (Dan Koe)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy: #1a2744;
+      --navy-light: #24355a;
+      --navy-dark: #0f172a;
+      --paper: #faf8f5;
+      --paper-card: #ffffff;
+      --zh-bg: #f0ece2;
+      --zh-border: #8c7a6b;
+      --text-main: #1e2430;
+      --text-muted: #5a6270;
+      --border-soft: #e4dfd5;
+      --hl-thesis: #fef08a;
+      --hl-thesis-border: #ca8a04;
+      --hl-term: #fecaca;
+      --hl-term-border: #dc2626;
+      --hl-evidence: #bfdbfe;
+      --hl-evidence-border: #2563eb;
+      --hl-concession: #bbf7d0;
+      --hl-concession-border: #16a34a;
+      --hl-method: #e9d5ff;
+      --hl-method-border: #9333ea;
+      --shadow-sm: 0 2px 8px rgba(26, 39, 68, 0.05);
+      --shadow-md: 0 8px 24px rgba(26, 39, 68, 0.12);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 126px;
+    }
+
+    body {
+      background-color: var(--paper);
+      color: var(--text-main);
+      font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 1. 顶部固定导航栏 */
+    .top-header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: var(--navy);
+      color: #f8fafc;
+      padding: 12px 28px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    }
+
+    .header-inner {
+      max-width: 1540px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .title-block { display: flex; flex-direction: column; gap: 3px; }
+    .title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    .paper-title {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      color: #ffffff;
+    }
+
+    .paper-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      background: rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-weight: 500;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .paper-sub { font-size: 0.78rem; color: #cbd5e1; }
+
+    .controls-wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+    .legend-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      background: rgba(0, 0, 0, 0.24);
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .legend-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      color: #94a3b8;
+      margin-right: 2px;
+    }
+
+    .legend-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.74rem;
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      padding: 4px 9px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.16s ease;
+      font-family: inherit;
+    }
+    .legend-btn:hover { background: rgba(255, 255, 255, 0.16); }
+    .legend-btn.active {
+      background: #ffffff;
+      color: var(--navy);
+      font-weight: 600;
+    }
+
+    .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+    .dot-thesis { background: var(--hl-thesis); border: 1px solid var(--hl-thesis-border); }
+    .dot-term { background: var(--hl-term); border: 1px solid var(--hl-term-border); }
+    .dot-evidence { background: var(--hl-evidence); border: 1px solid var(--hl-evidence-border); }
+    .dot-concession { background: var(--hl-concession); border: 1px solid var(--hl-concession-border); }
+    .dot-method { background: var(--hl-method); border: 1px solid var(--hl-method-border); }
+
+    .action-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    .tool-btn {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.73rem;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: var(--navy-light);
+      color: #f8fafc;
+      cursor: pointer;
+      transition: all 0.16s ease;
+    }
+    .tool-btn:hover { background: #32497a; }
+    .tool-btn.active-mode {
+      background: #eab308;
+      color: #0f172a;
+      border-color: #facc15;
+      font-weight: 600;
+    }
+    .tool-btn.export-btn {
+      background: #e2e8f0;
+      border-color: #ffffff;
+      color: var(--navy-dark);
+      font-weight: 600;
+    }
+    .tool-btn.export-btn:hover { background: #ffffff; }
+
+    /* 2. 吸顶叙事弧线导航 */
+    .sub-nav {
+      position: sticky;
+      top: 63px;
+      z-index: 990;
+      background: rgba(250, 248, 245, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border-soft);
+      padding: 8px 28px;
+    }
+
+    .sub-nav-inner {
+      max-width: 1540px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .sub-nav-inner::-webkit-scrollbar { display: none; }
+
+    .nav-link {
+      text-decoration: none;
+      font-size: 0.76rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      padding: 4px 10px;
+      border-radius: 4px;
+      white-space: nowrap;
+      border: 1px solid transparent;
+      transition: all 0.16s ease;
+    }
+    .nav-link:hover { color: var(--navy); background: #ece7dc; }
+    .nav-link.active {
+      background: var(--navy);
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .nav-role {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.68rem;
+      opacity: 0.75;
+      margin-left: 3px;
+    }
+
+    /* 主容器 */
+    .workbench-container {
+      max-width: 1540px;
+      margin: 28px auto 72px;
+      padding: 0 28px;
+    }
+
+    /* 3. 先导卡片：去鸡汤化认知鸟瞰与原生 SVG 几何心智模型 */
+    .mental-model-card {
+      background: var(--paper-card);
+      border: 1px solid var(--border-soft);
+      border-top: 4px solid var(--navy);
+      border-radius: 8px;
+      padding: 24px 28px;
+      margin-bottom: 32px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .mm-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-soft);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .mm-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .mm-subtitle {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.76rem;
+      color: var(--text-muted);
+    }
+
+    .raw-law-banner {
+      background: var(--navy);
+      color: #f8fafc;
+      padding: 15px 20px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+      border-left: 4px solid #eab308;
+    }
+    .raw-law-banner strong { color: #fde047; font-family: 'IBM Plex Mono', monospace; }
+
+    /* Old OS vs New OS */
+    .os-compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .os-card { padding: 16px 18px; border-radius: 6px; font-size: 0.84rem; }
+    .os-old { background: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #dc2626; }
+    .os-new { background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; }
+
+    .os-card h4 {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.8rem;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+    .os-old h4 { color: #991b1b; }
+    .os-new h4 { color: #166534; }
+
+    .os-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .os-list li {
+      padding-left: 18px;
+      position: relative;
+      line-height: 1.55;
+    }
+    .os-old .os-list li::before {
+      content: "[-]";
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      position: absolute;
+      left: 0;
+      color: #dc2626;
+      font-weight: 700;
+    }
+    .os-new .os-list li::before {
+      content: "[+]";
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      position: absolute;
+      left: 0;
+      color: #16a34a;
+      font-weight: 700;
+    }
+
+    /* SVG 极简几何心智图面板 */
+    .svg-panel {
+      background: #f4f1ea;
+      border: 1px solid #dfd9cd;
+      border-radius: 6px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+    }
+
+    .svg-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .svg-panel-title {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--navy);
+      text-transform: uppercase;
+    }
+
+    .svg-panel-hint { font-size: 0.75rem; color: var(--text-muted); }
+
+    .mental-svg {
+      width: 100%;
+      height: auto;
+      max-height: 290px;
+      display: block;
+      background: #ffffff;
+      border: 1px solid #e5e0d5;
+      border-radius: 4px;
+      padding: 8px;
+    }
+
+    .svg-node { cursor: pointer; transition: opacity 0.15s ease; }
+    .svg-node:hover rect, .svg-node:hover circle {
+      stroke-width: 2.5px;
+      filter: brightness(0.96);
+    }
+
+    .glossary-strip {
+      background: #f8f6f1;
+      border-radius: 6px;
+      padding: 14px 18px;
+      border: 1px solid #e2dacb;
+    }
+
+    .glossary-title {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: var(--navy);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .glossary-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 10px;
+    }
+
+    .g-item {
+      background: #ffffff;
+      padding: 9px 12px;
+      border-radius: 4px;
+      border-left: 3px solid var(--hl-term-border);
+      font-size: 0.8rem;
+    }
+
+    .g-term {
+      font-weight: 700;
+      color: #991b1b;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .lineage-tag {
+      display: inline-block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.66rem;
+      background: #eef2ff;
+      color: #3730a3;
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-left: 4px;
+      font-weight: 600;
+    }
+
+    /* 章节分隔栏 */
+    .section-divider {
+      margin: 38px 0 18px;
+      padding: 12px 18px;
+      background: var(--navy);
+      color: #ffffff;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .section-divider h2 {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .section-task-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.74rem;
+      background: rgba(255, 255, 255, 0.12);
+      padding: 3px 10px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* 4. 逐个思想单元同行双栏网格 (.para-row) */
+    .para-row {
+      display: grid;
+      grid-template-columns: 56fr 44fr;
+      gap: 22px;
+      margin-bottom: 22px;
+      align-items: start;
+      transition: opacity 0.22s ease;
+    }
+
+    body.hide-notes .para-row { grid-template-columns: 1fr; }
+    body.hide-notes .col-note { display: none; }
+    body.hide-zh .zh-block, body.hide-zh .en-zh-divider { display: none; }
+
+    body.pareto-mode .para-row[data-weight="build"] {
+      opacity: 0.35;
+    }
+    body.pareto-mode .para-row[data-weight="build"]:hover {
+      opacity: 1;
+    }
+
+    .col-text {
+      background: var(--paper-card);
+      border: 1px solid var(--border-soft);
+      border-radius: 6px;
+      padding: 20px 24px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .para-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f0ece2;
+      flex-wrap: wrap;
+    }
+
+    .para-id {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.73rem;
+      font-weight: 600;
+      color: var(--navy);
+      background: #e8ecf4;
+      padding: 2px 7px;
+      border-radius: 3px;
+    }
+
+    .weight-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.69rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 3px;
+    }
+    .w-core { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .w-build { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+    .para-tldr {
+      font-size: 0.87rem;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .en-block {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 1rem;
+      line-height: 1.78;
+      color: #181c24;
+    }
+    .en-block p + p { margin-top: 10px; }
+
+    .protocol-questions {
+      background: #faf5ff;
+      border: 1px solid #d8b4fe;
+      border-left: 3px solid var(--hl-method-border);
+      padding: 12px 16px;
+      margin: 12px 0;
+      border-radius: 4px;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 0.86rem;
+      color: #1e1b4b;
+    }
+    .protocol-questions .pq-title {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #581c87;
+      margin-bottom: 8px;
+      display: block;
+      text-transform: uppercase;
+    }
+    .protocol-questions ol {
+      padding-left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* 五维高亮 */
+    .hl {
+      padding: 1px 3px;
+      border-radius: 2px;
+      transition: opacity 0.18s ease, box-shadow 0.18s ease;
+    }
+    .hl-thesis { background-color: var(--hl-thesis); border-bottom: 2px solid var(--hl-thesis-border); }
+    .hl-term {
+      background-color: var(--hl-term);
+      border-bottom: 2px dotted var(--hl-term-border);
+      cursor: help;
+      font-weight: 600;
+    }
+    .hl-evidence { background-color: var(--hl-evidence); border-bottom: 2px solid var(--hl-evidence-border); }
+    .hl-concession { background-color: var(--hl-concession); border-bottom: 2px solid var(--hl-concession-border); }
+    .hl-method { background-color: var(--hl-method); border-bottom: 2px solid var(--hl-method-border); }
+
+    body[data-filter] .hl {
+      opacity: 0.2;
+      background-color: transparent !important;
+      border-bottom-color: transparent !important;
+    }
+    body[data-filter="thesis"] .hl-thesis,
+    body[data-filter="term"] .hl-term,
+    body[data-filter="evidence"] .hl-evidence,
+    body[data-filter="concession"] .hl-concession,
+    body[data-filter="method"] .hl-method {
+      opacity: 1;
+      box-shadow: 0 0 0 2px rgba(26, 39, 68, 0.22);
+    }
+    body[data-filter="thesis"] .hl-thesis { background-color: var(--hl-thesis) !important; }
+    body[data-filter="term"] .hl-term { background-color: var(--hl-term) !important; }
+    body[data-filter="evidence"] .hl-evidence { background-color: var(--hl-evidence) !important; }
+    body[data-filter="concession"] .hl-concession { background-color: var(--hl-concession) !important; }
+    body[data-filter="method"] .hl-method { background-color: var(--hl-method) !important; }
+
+    .en-zh-divider {
+      border: 0;
+      height: 1px;
+      background: #dfd9cd;
+      margin: 15px 0;
+    }
+
+    .zh-block {
+      background-color: var(--zh-bg);
+      border-left: 3px solid var(--zh-border);
+      padding: 13px 16px;
+      border-radius: 0 4px 4px 0;
+      font-size: 0.92rem;
+      line-height: 1.74;
+      color: #2c2623;
+    }
+
+    /* 右栏：深度认知内化卡片 */
+    .col-note {
+      background: var(--paper-card);
+      border: 1px solid var(--border-soft);
+      border-left: 4px solid var(--navy);
+      border-radius: 6px;
+      padding: 18px 20px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .col-note.b-thesis { border-left-color: var(--hl-thesis-border); }
+    .col-note.b-term { border-left-color: var(--hl-term-border); }
+    .col-note.b-evidence { border-left-color: var(--hl-evidence-border); }
+    .col-note.b-concession { border-left-color: var(--hl-concession-border); }
+    .col-note.b-method { border-left-color: var(--hl-method-border); }
+
+    .note-module {
+      margin-bottom: 12px;
+      padding-bottom: 11px;
+      border-bottom: 1px dashed #e5e0d5;
+      font-size: 0.84rem;
+    }
+    .note-module:last-of-type {
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+    }
+
+    .nm-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 600;
+      color: var(--navy);
+      font-size: 0.75rem;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .echo-link {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.69rem;
+      background: #eef2ff;
+      color: #3730a3;
+      padding: 2px 7px;
+      border-radius: 3px;
+      border: 1px solid #c7d2fe;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .echo-link:hover {
+      background: #3730a3;
+      color: #ffffff;
+    }
+
+    .nm-body { color: #2d3440; line-height: 1.62; }
+
+    .trigger-box {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-left: 3px solid #ca8a04;
+      border-radius: 4px;
+      padding: 8px 11px;
+      margin-top: 6px;
+      color: #78350f;
+      font-size: 0.81rem;
+    }
+
+    .user-note-wrap { margin-top: 8px; }
+    .toggle-note-btn {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      background: #f8f6f1;
+      border: 1px solid #dfd9cd;
+      padding: 4px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .toggle-note-btn:hover { color: var(--navy); border-color: var(--navy); }
+
+    .user-note-area { display: none; margin-top: 8px; }
+    .user-note-area.open { display: block; }
+    .user-note-area textarea {
+      width: 100%;
+      min-height: 68px;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.82rem;
+      background: #fffbeb;
+      color: var(--text-main);
+      resize: vertical;
+    }
+
+    /* 5. 底部交互式个人重启与行动工作台 */
+    .workbench-section {
+      margin-top: 48px;
+      background: var(--paper-card);
+      border: 1px solid var(--border-soft);
+      border-top: 4px solid var(--navy);
+      border-radius: 8px;
+      padding: 28px 32px;
+      box-shadow: var(--shadow-md);
+    }
+
+    .wb-title {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 1.28rem;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .wb-sub {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      margin-bottom: 22px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .flow-skeleton {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 26px;
+    }
+
+    .flow-node {
+      background: #f8f6f1;
+      border: 1px solid #dfd9cd;
+      border-top: 3px solid var(--navy);
+      border-radius: 4px;
+      padding: 14px;
+    }
+    .flow-node h5 {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+    .flow-node p { font-size: 0.8rem; color: var(--text-main); line-height: 1.5; }
+
+    .quotes-box { margin-bottom: 28px; }
+    .quotes-box h4 {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.88rem;
+      color: var(--navy);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    .quote-item {
+      background: #f8f6f1;
+      border-left: 4px solid var(--navy);
+      padding: 12px 16px;
+      border-radius: 0 4px 4px 0;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .q-en { font-family: 'Lora', Georgia, serif; font-weight: 600; color: var(--navy); font-size: 0.9rem; }
+    .q-zh { color: var(--text-muted); font-size: 0.82rem; margin-top: 3px; }
+
+    .copy-q-btn {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      padding: 5px 10px;
+      border-radius: 3px;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .copy-q-btn:hover { background: var(--navy); color: #ffffff; }
+
+    .journal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 26px;
+    }
+
+    .journal-card {
+      background: #f8f6f1;
+      border: 1px solid #e2dacb;
+      border-top: 3px solid var(--navy);
+      border-radius: 6px;
+      padding: 16px 18px;
+    }
+
+    .journal-card label {
+      display: block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 4px;
+    }
+
+    .journal-hint {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .journal-card textarea {
+      width: 100%;
+      min-height: 100px;
+      padding: 10px 12px;
+      border: 1px solid #d1c9b8;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.85rem;
+      line-height: 1.55;
+      background: #ffffff;
+      color: var(--text-main);
+      resize: vertical;
+    }
+    .journal-card textarea:focus {
+      outline: none;
+      border-color: var(--navy);
+    }
+
+    .checklist-box {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-left: 4px solid #16a34a;
+      border-radius: 6px;
+      padding: 18px 22px;
+    }
+
+    .checklist-box h4 {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.86rem;
+      color: #166534;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 0.86rem;
+      cursor: pointer;
+    }
+    .check-item input[type="checkbox"] {
+      margin-top: 4px;
+      width: 15px;
+      height: 15px;
+      accent-color: #16a34a;
+      cursor: pointer;
+    }
+
+    #globalTooltip {
+      position: fixed;
+      max-width: 310px;
+      background: var(--navy-dark);
+      color: #f8fafc;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 0.78rem;
+      line-height: 1.52;
+      padding: 10px 13px;
+      border-radius: 4px;
+      border-left: 3px solid var(--hl-term-border);
+      box-shadow: var(--shadow-md);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.14s ease;
+      z-index: 3000;
+    }
+    #globalTooltip.visible { opacity: 1; }
+
+    #backJumpBtn {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      background: var(--navy);
+      color: #ffffff;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.76rem;
+      padding: 9px 14px;
+      border: 1px solid #eab308;
+      border-radius: 4px;
+      box-shadow: var(--shadow-md);
+      cursor: pointer;
+      display: none;
+      z-index: 2000;
+    }
+    #backJumpBtn:hover { background: var(--navy-light); }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--navy);
+      color: #fff;
+      font-family: 'IBM Plex Mono', monospace;
+      padding: 11px 18px;
+      border-radius: 4px;
+      box-shadow: var(--shadow-md);
+      font-size: 0.8rem;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px);
+      transition: all 0.22s ease;
+      z-index: 2000;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 960px) {
+      .os-compare-grid, .para-row, .flow-skeleton, .journal-grid { grid-template-columns: 1fr; }
+      .top-header { padding: 10px 16px; }
+      .sub-nav { top: 108px; padding: 6px 16px; }
+      .workbench-container { padding: 0 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. 顶部固定导航栏 -->
+  <header class="top-header">
+    <div class="header-inner">
+      <div class="title-block">
+        <div class="title-row">
+          <span class="paper-title">How to Fix Your Entire Life in 1 Day</span>
+          <span class="paper-badge">DAN KOE | FUTURE/PROOF</span>
+          <span class="paper-badge">IDENTITY &amp; CYBERNETICS PROTOCOL</span>
+        </div>
+        <div class="paper-sub">《如何在一天之内彻底重启你的人生》| 剥离情绪渲染，提炼心理控制论、阿德勒目的论与心流熵减系统</div>
+      </div>
+
+      <div class="controls-wrap">
+        <div class="legend-bar" aria-label="五维认知图例">
+          <span class="legend-label">[DIMENSION FILTER]:</span>
+          <button class="legend-btn" data-dim="thesis"><span class="dot dot-thesis"></span>颠覆性洞察/金句</button>
+          <button class="legend-btn" data-dim="term"><span class="dot dot-term"></span>心智模型 (悬停释义)</button>
+          <button class="legend-btn" data-dim="evidence"><span class="dot dot-evidence"></span>痛点诊断/底层机制</button>
+          <button class="legend-btn" data-dim="concession"><span class="dot dot-concession"></span>反直觉纠偏</button>
+          <button class="legend-btn" data-dim="method"><span class="dot dot-method"></span>可执行协议 (Protocol)</button>
+        </div>
+
+        <div class="action-btns">
+          <button class="tool-btn" id="btnPareto" title="弱化展开段，仅聚焦核心认知核">[80/20 认知核聚焦]</button>
+          <button class="tool-btn" id="btnToggleZh">[显/隐中文]</button>
+          <button class="tool-btn" id="btnToggleNotes">[显/隐拆解]</button>
+          <button class="tool-btn export-btn" id="btnExportMd">[导出 Markdown 笔记]</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 2. 吸顶叙事弧线导航 -->
+  <nav class="sub-nav">
+    <div class="sub-nav-inner">
+      <a class="nav-link active" href="#sec-mental">00. 认知鸟瞰与几何模型</a>
+      <a class="nav-link" href="#sec-arc1">Arc 1: 痛点刺穿 <span class="nav-role">[身份恒温器]</span></a>
+      <a class="nav-link" href="#sec-arc2">Arc 2: 底层机制 <span class="nav-role">[自毁的目的论]</span></a>
+      <a class="nav-link" href="#sec-arc3">Arc 3: 早间挖掘 <span class="nav-role">[痛点与反愿景]</span></a>
+      <a class="nav-link" href="#sec-arc4">Arc 4: 日间中断 <span class="nav-role">[模式中断与杠杆]</span></a>
+      <a class="nav-link" href="#sec-arc5">Arc 5: 晚间整合 <span class="nav-role">[RPG游戏化架构]</span></a>
+      <a class="nav-link" href="#sec-workbench">06. 交互式 1-Day 重启工作台</a>
+    </div>
+  </nav>
+
+  <main class="workbench-container">
+
+    <!-- 3. 先导卡片：去鸡汤化认知鸟瞰与原生 SVG 几何心智模型 -->
+    <section class="mental-model-card" id="sec-mental">
+      <div class="mm-header">
+        <div class="mm-title">TOP MENTAL MAP / 30 秒去鸡汤化认知鸟瞰与极简几何心智模型</div>
+        <div class="mm-subtitle">COGNITIVE WORKBENCH V4.0 | ZERO-EMOJI EDITION</div>
+      </div>
+
+      <div class="raw-law-banner">
+        <strong>[RAW FIRST-PRINCIPLE / 一句话第一性原理]：</strong>人类的心智是一个<strong>目标导向的控制论恒温器（Cybernetic Thermostat）</strong>——只要你底层的“自我身份设定值（Identity Set-Point）”和“隐秘安全目的”没有改变，任何靠咬牙坚持的表层行为打卡（早起、戒手机、新年计划）都会被潜意识判定为“系统误差”并强行拉回原位。
+      </div>
+
+      <div class="os-compare-grid">
+        <div class="os-card os-old">
+          <h4>[OLD DEFAULT OS / 平庸默认操作系统]</h4>
+          <ul class="os-list">
+            <li><strong>末端行为死磕</strong>：试图在不改变“我是谁”的前提下，靠意志力逼自己做痛苦的事，两周内必然触发稳态反弹。</li>
+            <li><strong>单向正能量幻想</strong>：只写空洞的“三年财务自由”，对当下温水煮青蛙的日常钝痛毫无生理性危机感。</li>
+            <li><strong>将拖延归咎于懒惰</strong>：看不见拖延背后其实是潜意识在极其成功地执行“保护自尊、逃避失败评判”的隐秘目标。</li>
+            <li><strong>全天自动驾驶模式</strong>：从早醒刷信息流到深夜内耗，注意力被外部算法劫持，大脑处于高精神熵（Psychic Entropy）混乱态。</li>
+          </ul>
+        </div>
+        <div class="os-card os-new">
+          <h4>[UPGRADED OS / 高维重启操作系统]</h4>
+          <ul class="os-list">
+            <li><strong>身份先行（Identity First）</strong>：先重塑“我是一个怎样的人”，让高产习惯变成顺应身份的本能，让偷懒反而显得别扭。</li>
+            <li><strong>反愿景驱动（Anti-Vision Fuel）</strong>：将未来 5 至 10 年毫无长进的噩梦具象化，利用损失厌恶提供强大的初始推力。</li>
+            <li><strong>冷酷旁观者审计</strong>：捂住耳朵不听嘴上抱怨什么，只看过去两小时的实际行动在为哪个隐秘优先级投票。</li>
+            <li><strong>人生游戏化架构（RPG Loop）</strong>：通关愿景 + 失败惩罚（反愿景）+ 1年主线 + 1月Boss战 + 每日3个高杠杆任务。</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 原生 SVG 极简几何心智模型图 (Dan Koe 视觉风格) -->
+      <div class="svg-panel">
+        <div class="svg-panel-header">
+          <span class="svg-panel-title">GEOMETRIC MENTAL MODELS / 三大核心心智模型几何拆解图</span>
+          <span class="svg-panel-hint">[交互提示：点击图中任意几何模型区域，可直接平滑跳转至对应正文思想单元]</span>
+        </div>
+        <svg class="mental-svg" viewBox="0 0 980 225" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="m-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#1a2744" />
+            </marker>
+          </defs>
+
+          <!-- 模型 A: 身份恒温器与反愿景推力 -->
+          <g class="svg-node" onclick="jumpTo('#unit-01')">
+            <rect x="10" y="10" width="305" height="205" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" />
+            <text x="24" y="30" font-family="IBM Plex Mono" font-size="10.5" font-weight="700" fill="#1a2744">MODEL A: CYBERNETIC IDENTITY THERMOSTAT</text>
+            <!-- 同心圆 -->
+            <circle cx="105" cy="122" r="64" fill="#f1f5f9" stroke="#64748b" stroke-dasharray="4 3" stroke-width="1.5" />
+            <text x="105" y="72" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#475569">Surface Actions (Willpower)</text>
+            <circle cx="105" cy="122" r="34" fill="#fef08a" stroke="#ca8a04" stroke-width="2" />
+            <text x="105" y="120" text-anchor="middle" font-family="IBM Plex Sans" font-size="10" font-weight="700" fill="#1e2430">IDENTITY</text>
+            <text x="105" y="133" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="#713f12">Set-Point</text>
+            <!-- 右侧说明 -->
+            <text x="184" y="96" font-family="IBM Plex Sans" font-size="10" font-weight="600" fill="#991b1b">Old Identity Pulls Back</text>
+            <text x="184" y="112" font-family="IBM Plex Mono" font-size="9" fill="#475569">Force action -&gt; Snap back</text>
+            <text x="184" y="144" font-family="IBM Plex Sans" font-size="10" font-weight="600" fill="#166534">Shift Core First (#01)</text>
+            <text x="184" y="160" font-family="IBM Plex Mono" font-size="9" fill="#475569">New shell -&gt; Natural habit</text>
+          </g>
+
+          <!-- 模型 B: 反愿景推力 vs 愿景拉力矢量 -->
+          <g class="svg-node" onclick="jumpTo('#unit-04')">
+            <rect x="332" y="10" width="315" height="205" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" />
+            <text x="346" y="30" font-family="IBM Plex Mono" font-size="10.5" font-weight="700" fill="#1a2744">MODEL B: ANTI-VISION vs. VISION VECTOR</text>
+
+            <rect x="348" y="68" width="82" height="96" rx="4" fill="#fecaca" stroke="#dc2626" stroke-width="1.5" />
+            <text x="389" y="108" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" font-weight="700" fill="#7f1d1d">ANTI-VISION</text>
+            <text x="389" y="124" text-anchor="middle" font-family="IBM Plex Sans" font-size="9" fill="#991b1b">5-Yr Nightmare</text>
+            <text x="389" y="138" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="#991b1b">(Repulsion 2.5x)</text>
+
+            <circle cx="490" cy="116" r="18" fill="#1a2744" />
+            <text x="490" y="120" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" font-weight="700" fill="#ffffff">YOU</text>
+
+            <rect x="550" y="68" width="82" height="96" rx="4" fill="#bbf7d0" stroke="#16a34a" stroke-width="1.5" />
+            <text x="591" y="108" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" font-weight="700" fill="#14532d">VISION</text>
+            <text x="591" y="124" text-anchor="middle" font-family="IBM Plex Sans" font-size="9" fill="#166534">3-Yr Ideal Day</text>
+            <text x="591" y="138" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="#166534">(Magnetic Pull)</text>
+
+            <line x1="434" y1="116" x2="466" y2="116" stroke="#dc2626" stroke-width="2" marker-end="url(#m-arrow)" />
+            <line x1="510" y1="116" x2="544" y2="116" stroke="#16a34a" stroke-width="2" marker-end="url(#m-arrow)" />
+            <text x="490" y="190" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#334155">"If you don't hate it, you will tolerate it." (#03-#04)</text>
+          </g>
+
+          <!-- 模型 C: 人生游戏化五级漏斗 -->
+          <g class="svg-node" onclick="jumpTo('#unit-07')">
+            <rect x="664" y="10" width="306" height="205" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" />
+            <text x="678" y="30" font-family="IBM Plex Mono" font-size="10.5" font-weight="700" fill="#1a2744">MODEL C: GAMIFIED LIFE HIERARCHY (#07)</text>
+
+            <rect x="684" y="48" width="266" height="26" rx="3" fill="#1a2744" />
+            <text x="817" y="65" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#ffffff">1. VISION = Victory Condition | ANTI-VISION = Stake</text>
+
+            <rect x="704" y="84" width="226" height="26" rx="3" fill="#e9d5ff" stroke="#9333ea" />
+            <text x="817" y="101" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" font-weight="600" fill="#3b0764">2. 1-YEAR GOAL = The Main Mission</text>
+
+            <rect x="724" y="120" width="186" height="26" rx="3" fill="#bfdbfe" stroke="#2563eb" />
+            <text x="817" y="137" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" font-weight="600" fill="#1e3a8a">3. 1-MONTH PROJECT = Boss Fight</text>
+
+            <rect x="744" y="156" width="146" height="32" rx="3" fill="#fef08a" stroke="#ca8a04" />
+            <text x="817" y="176" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" font-weight="700" fill="#713f12">4. DAILY 3 LEVERS = Quests</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="glossary-strip">
+        <div class="glossary-title">CORE MENTAL MODELS &amp; LINEAGE / 核心心智模型词典与思想溯源（红色术语可鼠标悬停查看）</div>
+        <div class="glossary-items">
+          <div class="g-item">
+            <span class="g-term">Anti-Vision (反愿景)</span>
+            <span class="lineage-tag">Kahneman 前景理论 &amp; 荣格阴影</span><br>
+            对“未来 5 至 10 年维持现状将活成什么噩梦模样”的切肤具象化。人类规避损失的动机强度是追求同等收益的 $2 \sim 2.5$ 倍。
+          </div>
+          <div class="g-item">
+            <span class="g-term">Teleological Behavior (目的论行为)</span>
+            <span class="lineage-tag">Alfred Adler 个体心理学</span><br>
+            一切行为（包括拖延与自我毁灭）都是目标导向的。你不去行动，是因为潜意识更想达成“维持确定性、免受失败审判”的安全目标。
+          </div>
+          <div class="g-item">
+            <span class="g-term">Conceptual Survival (概念性生存)</span>
+            <span class="lineage-tag">自我心理学 &amp; 神经防卫</span><br>
+            现代人不愁肉体生存，大脑便将“维护既有自我概念（Ego）”视为生死存亡。任何颠覆旧身份的改变都会触发杏仁核威胁报警。
+          </div>
+          <div class="g-item">
+            <span class="g-term">Psychic Entropy (精神熵)</span>
+            <span class="lineage-tag">Csikszentmihalyi 心流理论</span><br>
+            当缺乏清晰目标层级时，注意力被碎片化多巴胺、焦虑与无序念头撕裂的内耗状态；反之，游戏化任务规则能带来“精神负熵（心流）”。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== ARC 1: THE TRAP OF SURFACE CHANGE ==================== -->
+    <div class="section-divider" id="sec-arc1">
+      <h2>Arc 1 · 痛点刺穿：为什么 90% 的新年决心与表层自律注定破产？</h2>
+      <span class="section-task-badge">NARRATIVE ROLE: 刺破“靠意志力强改行为”的幻觉，确立身份（Identity）第一性原理</span>
+    </div>
+
+    <article class="para-row" id="unit-01" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">UNIT #01</span>
+          <span class="weight-badge w-core">[CORE / 认知核]</span>
+          <span class="para-tldr">你还没走到你想去的地方，因为你还不是那个“理应出现在那里的人”</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-concession">80 to 90% of people fail their New Year's resolutions before February even begins. Why? Because most people try to change their surface-level actions without ever changing the person who is performing them. They adopt goals to impress others in status games rather than shifting their internal narrative.</span></p>
+          <p><span class="hl hl-thesis">Here is the harsh truth: You aren't where you want to be because you aren't the person who would be there.</span></p>
+          <p><span class="hl hl-evidence">Think about a bodybuilder, a successful CEO, or a prolific creator. Do you think they wake up every single morning fighting a brutal war of willpower just to eat clean or sit down to do deep work? No. To them, living a lazy, distracted lifestyle actually feels uncomfortable. Their daily habits are simply the natural byproduct of their <span class="hl hl-term" data-tip="身份认同（Identity）：你潜意识里认定的“我是怎样的人”。它是控制一切日常习惯、情绪反应与注意力分配的底层控制论恒温器。">identity</span>.</span> <span class="hl hl-concession">When you try to force a new habit onto an old identity, your mind treats that new habit like a foreign virus and attacks it until you snap right back to baseline.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          80% 到 90% 的人在二月份还没到来之前，就已经放弃了他们的新年决心。为什么？因为绝大多数人只试图改变表层的行为动作，却从未改变那个执行动作的“人”。他们立下目标往往只是为了在世俗地位游戏中迎合他人，而非重塑内在的自我叙事。<br><br>
+          残酷的真相是：你之所以还没走到你想去的地方，是因为你还不是那个“理应出现在那里的人”。<br><br>
+          想想那些顶尖的健美运动员、成功的 CEO 或高产的创作者。你以为他们每天早上醒来，都要靠惨烈的意志力搏斗才能吃下健康餐或坐下来深度工作吗？根本不是。对他们而言，过那种懒散、分心的生活反而会浑身难受。他们的日常习惯只不过是其“身份认同”自然流淌出的副产品。当你试图把一个新习惯强行嫁接到旧身份上时，你的大脑会把新习惯当成外来入侵的病毒，拼命排斥它，直到你彻底反弹回原来的基准线。
+        </div>
+      </div>
+
+      <div class="col-note b-thesis">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 叙事推进与底层机制（Why It Works）</span>
+            <a class="echo-link" href="#unit-04">[跳转呼应 -&gt; UNIT #04 新身份甲壳]</a>
+          </div>
+          <div class="nm-body"><strong>[刺破现象：新年计划高失败率] -&gt; [抛出核心律：身份决定位置] -&gt; [反常识例证：高手不靠意志力硬撑]</strong>。底层机制源自 Maxwell Maltz 的<strong>《心理控制论（Psycho-Cybernetics）》</strong>：自我意象（Self-Image）如同设定在 22℃ 的恒温器，靠意志力强行改变外部行为如同对着温度计吹热风，一旦停手必然被系统拉回 22℃。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">02 / 去魅滤镜与适用边界（Anti-Hype Reality Check）</div>
+          <div class="nm-body"><strong>防误读边界</strong>：作者说“高手不需要意志力”描述的是<strong>身份稳态建立之后</strong>的状态。在从旧身份向新身份迁移的最初 14 至 30 天（神经突触重塑期），前额叶依然需要承受显著的启动摩擦，不能因为前三天觉得吃力就误以为“这不符合我的天性”。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">03 / 顶级创作者表达解剖（Rhetoric &amp; Structure）</div>
+          <div class="nm-body"><strong>同构对仗暴击术</strong>：<code>You aren't where you want to be because you aren't the person who would be there.</code> 全句仅用最简单的基础词汇，将“外在境遇（where）”直接归因于“内在本体（person）”，瞬间封死读者向外找借口的退路。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">04 / 知行阻抗诊断与个人映射（Execution Trigger）</div>
+          <div class="nm-body">
+            <strong>阻抗诊断</strong>：人们热衷于列计划、买工具，因为改变表层工具不需要否定过去的自己；而承认“我目前的身份配不上目标”会直接刺痛自我防卫机制。
+            <div class="trigger-box">[SELF-REFLECTION]：你最近一直在逼自己做、却反复半途而废的那件事，在你潜意识里是不是还被贴着“我本来不喜欢、只是不得不应付”的旧身份标签？</div>
+          </div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('unit-01')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-unit-01">
+            <textarea data-note-id="unit-01" placeholder="在此记录你对本段的思考或个人映射..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== ARC 2: HIDDEN MECHANICS OF SELF-SABOTAGE ==================== -->
+    <div class="section-divider" id="sec-arc2">
+      <h2>Arc 2 · 底层机制：为什么你嘴上说想改变，身体却在精准地自我设障？</h2>
+      <span class="section-task-badge">NARRATIVE ROLE: 引入阿德勒“目的论”与“概念性生存”，拆穿拖延背后的隐秘安全收益</span>
+    </div>
+
+    <article class="para-row" id="unit-02" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">UNIT #02</span>
+          <span class="weight-badge w-core">[CORE / 认知核]</span>
+          <span class="para-tldr">一切行为皆有目的：拖延不是缺乏动力，而是极其成功地保护了自尊与安全感</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-thesis">To change your life, you must first understand a fundamental law of human psychology: <span class="hl hl-term" data-tip="目的论（Teleology）：阿德勒心理学的核心公理——人类的一切行为都不是由“过去的创伤或原因”被动驱动的，而是为了服务于某个“当下的隐秘目标”。">All behavior is goal-oriented</span>. Even self-sabotage.</span></p>
+          <p><span class="hl hl-evidence">When you procrastinate on starting that project, publishing your work, or applying for that role, you aren't lacking "discipline." You are actively succeeding at a hidden, unconscious goal: the goal of protecting your ego from judgment, uncertainty, and the bruising pain of giving your absolute best and still falling short.</span></p>
+          <p><span class="hl hl-thesis">There are three core reasons you stay stuck: First, you aren't the person who would be there. Second, you don't actually want to go there—because your real priority is comfort and predictability. Third, you are afraid to be there: stepping into a new life threatens your <span class="hl hl-term" data-tip="概念性生存（Conceptual Survival）：大脑将你现有的社交人设、世界观与习惯回路等同于“生命本身”，一旦打破旧人设就会引发类似肉体生存危机的焦虑。">conceptual survival</span>, requiring you to let go of the old version of yourself that your friends, family, and ego are attached to.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          要想改变人生，你必须先理解人类心理学的一条基本铁律：一切行为都是目标导向的——哪怕是自我毁灭与自我设障。<br><br>
+          当你迟迟拖延着不去启动那个项目、不去公开发表作品、不去争取那个机会时，你根本不是“缺乏自律”。事实上，你正在极其成功地达成另一个隐秘的潜意识目标：保护你的自尊免受他人评判、避开不确定性，以及逃避“万一我拼尽全力却依然失败，那就证明我真的无能”的剧痛。<br><br>
+          你原地踏步只有三个核心原因：第一，你还不是那个位置上的人；第二，你心底其实并不想去那里——因为你真正的最高优先级是贪图安稳与可预测性；第三，你害怕到达那里：迈入新人生会威胁你的“概念性生存”，它要求你亲手告别那个被你现有的朋友、家人和自尊所熟悉的旧自我。
+        </div>
+      </div>
+
+      <div class="col-note b-evidence">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 叙事推进与底层机制（Why It Works）</span>
+            <a class="echo-link" href="#unit-03">[跳转呼应 -&gt; UNIT #03 旁观者测试]</a>
+          </div>
+          <div class="nm-body"><strong>[抛出阿德勒目的论公理] -&gt; [剖析拖延的真实收益：自我设障保护 Ego] -&gt; [总结卡死人生的三重枷锁]</strong>。心理学中的<strong>自我设障（Self-Handicapping）</strong>机制表明：只要我不全力以赴，失败了就可以用“我只是没认真”来保全面子。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">02 / 去魅滤镜与适用边界（Anti-Hype Reality Check）</div>
+          <div class="nm-body"><strong>客观边界审视</strong>：并非所有拖延都源于深层心理防卫。如果任务目标过于庞大模糊（未拆解到可执行的下一步动作），或者长期睡眠剥夺导致前额叶皮层能量枯竭，同样会表现为拖延。需先排除生理疲劳与任务颗粒度问题。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">03 / 顶级创作者表达解剖（Rhetoric &amp; Structure）</div>
+          <div class="nm-body"><strong>定义翻转术（Reframing）</strong>：把读者自我归因的“无能（我缺乏动力）”翻转定义为“你其实非常成功——你成功执行了保护平庸安全区的隐秘目标”。这种反讽式翻转极具穿透力。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">04 / 知行阻抗诊断与个人映射（Execution Trigger）</div>
+          <div class="nm-body">
+            <strong>阻抗诊断</strong>：旧身份虽然痛苦，但它是<strong>可预测的痛苦（Known Hell）</strong>；新身份虽然诱人，却是<strong>不可控的未知（Unknown Territory）</strong>。人类神经系统本能偏爱确定性。
+            <div class="trigger-box">[SELF-REFLECTION]：如果你突然开始全力以赴、公开发声并追求高目标，你最怕听到身边哪一个人的议论或冷嘲热讽？</div>
+          </div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('unit-02')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-unit-02">
+            <textarea data-note-id="unit-02" placeholder="在此记录你对本段的思考或个人映射..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== ARC 3: PART 1 - MORNING EXCAVATION ==================== -->
+    <div class="section-divider" id="sec-arc3">
+      <h2>Arc 3 · Part 1 早间协议：心理深层挖掘与「反愿景（Anti-Vision）」核引擎</h2>
+      <span class="section-task-badge">NARRATIVE ROLE: 用 15-30 分钟纸笔审判刺穿麻木感，将隐痛转化为生理性推力</span>
+    </div>
+
+    <article class="para-row" id="unit-03" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">UNIT #03</span>
+          <span class="weight-badge w-core">[CORE / 认知核]</span>
+          <span class="para-tldr">如果你不彻底痛恨它，你就会一直容忍它：早间心理挖掘完整诊断题</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-method">In the morning, you do a psychological excavation to uncover your own hidden motives. During the day, you prompt yourself with interrupts to keep you out of autopilot and contemplate your life. At night, you synthesize the insights into a direction you will start to move in tomorrow.</span></p>
+          <p><span class="hl hl-thesis">First we must create a new frame, or lens of perception, for your mind to operate from. Set aside 15 to 30 minutes—the length of one YouTube video—to think about and answer these questions with pen and paper. Do not attempt to outsource this contemplation to AI. I want you to break past the limiter that is on your mind. You cannot change what you are numb to: if you don't hate it, you will tolerate it.</span></p>
+          <div class="protocol-questions">
+            <span class="pq-title">[PART 1A / MORNING DIAGNOSTIC EXCAVATION PROMPTS]</span>
+            <ol>
+              <li><span class="hl hl-method"><strong>What is the dull and persistent dissatisfaction you've learned to live with?</strong> (Not the deep dramatic suffering, but what you've learned to tolerate every single day.)</span></li>
+              <li><span class="hl hl-method"><strong>What do you complain about repeatedly but never actually change?</strong> (Write down the three complaints you've voiced most often in the past year.)</span></li>
+              <li><span class="hl hl-method"><strong>The Behavior Observer Test:</strong> For each complaint, what would someone who watched your behavior—not your words—conclude that you actually want?</span></li>
+              <li><span class="hl hl-method"><strong>The Unspoken Truth:</strong> What truth about your current life would be unbearable to admit to someone you deeply respect?</span></li>
+            </ol>
+          </div>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          在早上，你进行一次深层心理挖掘，揪出自己隐秘的潜意识动机；在白天，你用定时中断指令唤醒自己，跳出自动驾驶模式审视生活；到了夜晚，你将全天的洞察整合为明天醒来即可迈步的明确方向。<br><br>
+          首先，我们必须为你的大脑构建一个全新的感知框架（Frame）。留出 15 到 30 分钟——不过是看一个视频的时间——拿起纸和笔认真思考并回答以下问题。绝不要试图把这场思考外包给 AI。我要你冲破自己思维上的限速器。你永远无法改变你已经麻木的事物：如果你不痛恨它，你就会一直容忍它。<br><br>
+          <strong>[早间心理挖掘诊断 4 问]：</strong><br>
+          1. <strong>你已经学会习以为常的那种“钝感而持续的不满”是什么？</strong>（不是惊天动地的苦难，而是你每天都在凑合忍受的平庸。）<br>
+          2. <strong>你过去一年反复抱怨、却从未真正动手改变的三件事是什么？</strong><br>
+          3. <strong>冷酷旁观者测试：</strong>针对每一条抱怨，如果有一个旁观者只看你的实际行为（完全忽略你的言语辩解），他会断定你真正想要的是什么？<br>
+          4. <strong>难以启齿的真相：</strong>关于你目前的生活状态，有什么真相是你绝对不敢向一个你深为敬重的人坦白的？
+        </div>
+      </div>
+
+      <div class="col-note b-method">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 叙事推进与底层机制（Why It Works）</span>
+            <a class="echo-link" href="#sec-workbench">[跳转实操 -&gt; 底部书写工作台]</a>
+          </div>
+          <div class="nm-body"><strong>[总览全天三段式架构] -&gt; [点破温水煮青蛙机制：钝感适应] -&gt; [用 4 道手术题剥离自我欺骗]</strong>。第 3 问直接应用了经济学与行为科学中的<strong>揭示性偏好（Revealed Preference）</strong>：语言是廉价的自我公关，时间与注意力的实际分配才是你潜意识的真实投票。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">03 / 顶级创作者表达解剖（Rhetoric &amp; Structure）</div>
+          <div class="nm-body"><strong>消除行动门槛 + 警句定锚</strong>：用 <code>the length of one YouTube video... you can do it</code> 瞬间击碎读者“我没时间写”的借口；再用 <code>If you don't hate it, you will tolerate it</code> 解释为何“60分过得去的生活”最容易让人荒废一生。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('unit-03')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-unit-03">
+            <textarea data-note-id="unit-03" placeholder="在此记录你对本段的思考或个人映射..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="para-row" id="unit-04" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">UNIT #04</span>
+          <span class="weight-badge w-core">[CORE / 认知核]</span>
+          <span class="para-tldr">构建「反愿景（Anti-Vision）」与新身份外壳：先看清 5 年后的噩梦，再定义 3 年后的理想</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-thesis">Those diagnostic questions are meant to make you aware of the pain in your current life. Now, we need to turn those into what I call an "<span class="hl hl-term" data-tip="反愿景（Anti-Vision）：对你最恐惧的平庸结局建立起切肤、具象的危机感，将损失厌恶转化为冲出舒适区的原始推力。">anti-vision</span>," which is a brutal awareness of the life you do not want to live.</span></p>
+          <div class="protocol-questions">
+            <span class="pq-title">[PART 1B / ANTI-VISION, VISION &amp; IDENTITY PROMPTS]</span>
+            <ol>
+              <li><span class="hl hl-method"><strong>The 5-to-10 Year Nightmare (Anti-Vision):</strong> If nothing changes for the next 5 to 10 years and you stay on your current autopilot trajectory, what does an average Tuesday look like? Where do you wake up? How does your body feel? What opportunities have passed you by? What is the ultimate cost of always choosing the safe path?</span></li>
+              <li><span class="hl hl-method"><strong>Identity Shedding:</strong> What identity or label ("I'm just a procrastinator," "I'm not good at sales/writing") must you let go of to escape that nightmare?</span></li>
+              <li><span class="hl hl-method"><strong>The 3-Year Minimum Viable Vision:</strong> Contrast your anti-vision by mapping out the exact life you genuinely want 3 years from now—without filtering yourself through what seems "realistic" to your current circle.</span></li>
+              <li><span class="hl hl-method"><strong>The Identity Shift Declaration:</strong> Finish the sentence: <em>"I am the type of person who..."</em></span></li>
+            </ol>
+          </div>
+          <p><span class="hl hl-concession">This is like creating a new shell, leaving your old one, and slowly growing into it over time. It won't feel like it fits at first. That's a good thing.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          前面那些诊断题旨在让你看清当前生活中的隐痛。现在，我们要把这些痛感转化为我所说的<strong>“反愿景（Anti-Vision）”</strong>——即对你绝不愿去过的那种人生建立起残酷、切肤的清醒认知。<br><br>
+          <strong>[早间反愿景与身份重塑 4 问]：</strong><br>
+          1. <strong>5 至 10 年后的噩梦推演（反愿景）：</strong>如果未来 5 到 10 年什么都不改变，你继续沿着现有的自动驾驶轨迹滑行，那时的一个普通周二是什么样的？你在哪里醒来？身体状态如何？错失了哪些机会？永远选择“安全路线”的最终代价是什么？<br>
+          2. <strong>旧身份蜕皮：</strong>为了逃离那场噩梦，你必须亲手撕掉自己身上的哪个旧标签（如“我天生是个拖延症”、“我不擅长表达”）？<br>
+          3. <strong>3 年最小可行性愿景：</strong>与反愿景形成鲜明对比，勾勒出 3 年后你真正渴望的生活全貌——不要用你现有社交圈所谓的“现实可行”自我设限。<br>
+          4. <strong>新身份宣言：</strong>补全这句话：<em>“我是一个…………的人。”</em><br><br>
+          这就像为自己造一层全新的甲壳，脱掉旧壳，然后随着时间推移慢慢长进新壳里。起初穿在身上一定会觉得别扭、不合身。但这恰恰是好事。
+        </div>
+      </div>
+
+      <div class="col-note b-term">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 叙事推进与底层机制（Why It Works）</span>
+            <a class="echo-link" href="#unit-01">[跳回呼应 -&gt; UNIT #01 身份恒温器]</a>
+          </div>
+          <div class="nm-body"><strong>[将隐痛结晶为反愿景] -&gt; [5-10年具象化噩梦推演] -&gt; [反转构建 3 年愿景与新身份句式]</strong>。卡尼曼前景理论证明人类的<strong>损失厌恶系数约为 $2.5$</strong>：逃离地狱的推力远比奔向模糊天堂的拉力更强劲。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">02 / 去魅滤镜与适用边界（Anti-Hype Reality Check）</div>
+          <div class="nm-body"><strong>防焦虑过载</strong>：反愿景（Anti-Vision）是<strong>冷启动点火器</strong>，用于克服静摩擦；但一旦进入日常运转，不能长期靠自我厌恶和恐惧驱动（会导致慢性皮质醇升高与职业倦怠），必须过渡到对任务本身的掌控感与心流乐趣。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('unit-04')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-unit-04">
+            <textarea data-note-id="unit-04" placeholder="在此记录你对本段的思考或个人映射..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== ARC 4: PART 2 - DAYTIME INTERRUPTS & LEVERAGE ==================== -->
+    <div class="section-divider" id="sec-arc4">
+      <h2>Arc 4 · Part 2 日间协议：打断自动驾驶（Pattern Interrupts）与高能动性杠杆</h2>
+      <span class="section-task-badge">NARRATIVE ROLE: 在白天的真实环境中设置元认知断点，清理多巴胺噪音并善用现代杠杆</span>
+    </div>
+
+    <article class="para-row" id="unit-05" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">UNIT #05</span>
+          <span class="weight-badge w-core">[CORE / 认知核]</span>
+          <span class="para-tldr">日间定时“模式中断”协议：当场抓获潜意识逃避与精神熵增</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-evidence">Excavating your psychology in the morning is useless if you immediately fall back into unconscious <span class="hl hl-term" data-tip="自动驾驶模式（Autopilot）：由基底核接管的默认习惯回路，无需前额叶深度参与，会自动将你拉回刷手机、处理鸡毛蒜皮琐事的旧轨道。">autopilot</span> by midday. Throughout the day, your environment will bombard you with cheap dopamine cues designed to trigger your old identity and spike <span class="hl hl-term" data-tip="精神熵（Psychic Entropy）：注意力被外界碎片信息、未竟焦虑与无序欲望割裂后的大脑内耗状态。">psychic entropy</span>.</span></p>
+          <div class="protocol-questions">
+            <span class="pq-title">[PART 2 / DAYTIME PATTERN-INTERRUPT PROTOCOL]</span>
+            <ol>
+              <li><span class="hl hl-method"><strong>Set 3 to 4 Timed Interrupts:</strong> Set alarms or calendar notifications throughout the day (e.g., 11:00 AM, 2:00 PM, 5:00 PM, 8:00 PM) with these exact prompts as the label.</span></li>
+              <li><span class="hl hl-method"><strong>Interrupt Prompt A:</strong> <em>"What am I actively avoiding right now by doing what I'm doing?"</em> (Catching productive procrastination in real time.)</span></li>
+              <li><span class="hl hl-method"><strong>Interrupt Prompt B:</strong> <em>"If someone filmed the last two hours of my life, what would they conclude I actually want?"</em></span></li>
+              <li><span class="hl hl-method"><strong>Input Audit:</strong> What media consumption, notifications, and default routines are draining my mental energy and keeping my identity anchored in the past?</span></li>
+            </ol>
+          </div>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          如果你早上做完了心理挖掘，到了中午却立刻跌回无意识的“自动驾驶模式”，那早上的顿悟就毫无价值。在白天，你周围的环境会用廉价的多巴胺线索对你狂轰滥炸，精准触发你的旧身份，让你的大脑陷入“精神熵增（注意力碎片化与内耗）”。<br><br>
+          <strong>[日间自动驾驶中断协议]：</strong><br>
+          1. <strong>设置 3 到 4 个定时中断闹钟：</strong>在白天设置手机闹钟或日历弹窗（如 11:00、14:00、17:00、20:00），直接将以下问题设为闹钟标题。<br>
+          2. <strong>中断追问 A：</strong><em>“我此时此刻正在做的事，其实是在积极逃避哪一件真正重要的事？”</em>（当场抓获“伪勤奋式拖延”。）<br>
+          3. <strong>中断追问 B：</strong><em>“如果有人用摄像机拍下了我过去两小时的所作所为，他会断定我真正想要什么？”</em><br>
+          4. <strong>信息输入审计：</strong>哪些媒体内容消费、消息通知和默认惯例正在抽干我的精神能量，把我的身份死死锚定在过去？
+        </div>
+      </div>
+
+      <div class="col-note b-method">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 叙事推进与底层机制（Why It Works）</span>
+            <span class="echo-link" onclick="jumpTo('#sec-workbench')">[跳转实操 -&gt; 底部闹钟核查项]</span>
+          </div>
+          <div class="nm-body"><strong>[指出知行断裂点：早间顿悟敌不过日间环境触发器] -&gt; [设计外部硬件中断：4个定时灵魂拷问]</strong>。当人在无意识刷屏或用琐事逃避核心难题时，背外侧前额叶（dlPFC）处于离线状态；外部定时追问能强制触发<strong>元认知唤醒（Metacognitive Awakening）</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">04 / 知行阻抗诊断与个人映射（Execution Trigger）</div>
+          <div class="nm-body">
+            <strong>阻抗诊断</strong>：人们最擅长用“整理文件夹、回复次要消息、搜集资料”等低认知负荷琐事，来掩盖对高价值创造任务的逃避（Productive Procrastination）。
+            <div class="trigger-box">[IMMEDIATE ACTION]：现在拿起手机，定一个今天下午 15:00 的闹钟，备注文字写上：“你过去两小时的行动在为哪个未来投票？”</div>
+          </div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('unit-05')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-unit-05">
+            <textarea data-note-id="unit-05" placeholder="在此记录你对本段的思考或个人映射..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="para-row" id="unit-06" data-weight="build">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">UNIT #06</span>
+          <span class="weight-badge w-build">[BUILD / 逻辑展开]</span>
+          <span class="para-tldr">高能动性（High Agency）与现代工具杠杆：用 AI 扩张能力边界，而非替你偷懒</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-concession">We live in an era of unprecedented leverage, yet most people use modern tools and AI merely to be lazy—to generate shallow slop, avoid thinking, and outsource their agency.</span></p>
+          <p><span class="hl hl-thesis">True <span class="hl hl-term" data-tip="高能动性（High Agency）：拒绝将环境、规则或个人短板视为固定约束，主动调用一切工具与学习手段重写结果的能力。">high agency</span> means using AI and digital systems not to shrink your effort, but to expand your surface area of ambition—to build, learn, and execute projects that were previously impossible for a single individual.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          我们身处一个杠杆率空前的时代，但绝大多数人使用现代工具和 AI 仅仅是为了偷懒——用来生产廉价敷衍的垃圾内容、逃避深度思考，并将自己的主体性彻底外包。<br><br>
+          真正的“高能动性（High Agency）”，意味着利用 AI 与数字化系统不是为了缩减你的努力，而是为了扩张你的雄心半径——去独立构建、快速学习并交付那些在过去凭一己之力根本不可能完成的项目。
+        </div>
+      </div>
+
+      <div class="col-note b-concession">
+        <div class="note-module">
+          <div class="nm-label">01 / 叙事推进与底层机制</div>
+          <div class="nm-body"><strong>[批判低维工具观：用 AI 逃避思考] -&gt; [确立高维杠杆观：用 AI 放大个人能力半径]</strong>。回应了早间协议中“不要把思考外包给 AI”的警告：心智挖掘与方向选择必须亲力亲为，工程执行与知识拆解则调用 AI 杠杆。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('unit-06')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-unit-06">
+            <textarea data-note-id="unit-06" placeholder="在此记录你对本段的思考或个人映射..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== ARC 5: PART 3 - EVENING SYNTHESIS & GAMIFICATION ==================== -->
+    <div class="section-divider" id="sec-arc5">
+      <h2>Arc 5 · Part 3 晚间协议：整合核心指令与「人生 RPG 游戏化系统」</h2>
+      <span class="section-task-badge">NARRATIVE ROLE: 将全天挖掘收敛为五级游戏规则，消除模糊性并锁定明日行动</span>
+    </div>
+
+    <article class="para-row" id="unit-07" data-weight="core">
+      <div class="col-text">
+        <div class="para-meta">
+          <span class="para-id">UNIT #07</span>
+          <span class="weight-badge w-core">[CORE / 认知核]</span>
+          <span class="para-tldr">晚间整合与人生游戏化五维映射：通关条件、失败惩罚、主线、Boss 战与每日任务</span>
+        </div>
+        <div class="en-block">
+          <p><span class="hl hl-method"><strong>Part 3 of the Protocol (Evening Synthesis):</strong> At night, spend 30 to 45 minutes synthesizing your breakthroughs into a concrete direction you will start to move in tomorrow.</span></p>
+          <p><span class="hl hl-thesis">To keep your momentum alive long after this 1-day reset, you must structure your personal growth like a video game. Why are video games so effortlessly engaging while real life feels overwhelming? Because games have clear win/loss conditions, nested quests, and immediate feedback loops that eliminate mental fog.</span></p>
+          <div class="protocol-questions">
+            <span class="pq-title">[PART 3 / EVENING SYNTHESIS &amp; GAMIFIED LIFE ARCHITECTURE]</span>
+            <ol>
+              <li><span class="hl hl-method"><strong>Identify the Root Blockage:</strong> Write down the single core internal belief or mental trap that has been holding you back the most.</span></li>
+              <li><span class="hl hl-method"><strong>The Anti-Vision (1-Sentence Cost of Losing / Game Over):</strong> Distill the life you refuse to live into one visceral sentence.</span></li>
+              <li><span class="hl hl-method"><strong>The Vision (1-Sentence Victory Condition):</strong> Distill the life you are building into one clear sentence.</span></li>
+              <li><span class="hl hl-method"><strong>1-Year Goal (The Main Mission):</strong> What is the primary objective that defines winning this year?</span></li>
+              <li><span class="hl hl-method"><strong>1-Month Milestone (The Boss Fight):</strong> What concrete project, skill, or deliverable will you conquer in the next 30 days to advance the main mission?</span></li>
+              <li><span class="hl hl-method"><strong>2 to 3 Daily Levers (Daily Quests):</strong> Define just 2 to 3 concrete, high-leverage actions you will execute tomorrow morning before distractions enter.</span></li>
+            </ol>
+          </div>
+          <p><span class="hl hl-thesis">You don't fix your entire life in one day by magically finishing a decade of work in 24 hours. You fix your life in one day by shattering your unconscious programming, realigning your identity, and waking up tomorrow playing a game you consciously chose to play.</span></p>
+        </div>
+        <hr class="en-zh-divider" />
+        <div class="zh-block">
+          <strong>协议第三阶段（晚间整合）</strong>：到了夜晚，留出 30 到 45 分钟，将你全天的突破整合为明天醒来即可迈步的具体方向。<br><br>
+          为了让这股势能在“一天重启”之后长久保持鲜活，你必须把个人成长构建成一款电子游戏。为什么电子游戏让人毫不费力地全情投入，而现实生活却常让人不知所措？因为游戏拥有清晰的胜负条件、层层嵌套的任务体系以及即时反馈回路，彻底消除了大脑的迷雾感。<br><br>
+          <strong>[晚间整合与人生游戏化 6 步封存]：</strong><br>
+          1. <strong>锁定核心卡点：</strong>写下过去一直拖住你后腿的那唯一一条最核心的内在限制性信念。<br>
+          2. <strong>一句话反愿景（失败惩罚 / Game Over）：</strong>将你绝不妥协的平庸结局浓缩为极具威慑力的一句话。<br>
+          3. <strong>一句话愿景（通关条件 / Victory Condition）：</strong>将你正在构建的理想人生浓缩为清晰的一句话。<br>
+          4. <strong>1 年目标（年度主线任务 / Main Mission）：</strong>定义今年“赢下这场游戏”的唯一核心主线目标。<br>
+          5. <strong>1 个月里程碑（月度 Boss 战 / Boss Fight）：</strong>未来 30 天内，你要攻克哪一个具体的项目、产品或技能交付物来推进主线？<br>
+          6. <strong>明日 2 至 3 个核心杠杆（每日日常任务 / Daily Quests）：</strong>仅定义 2 到 3 个明天一早醒来、在外界干扰介入之前雷打不动执行的具体动作。<br><br>
+          所谓“在一天之内重启人生”，并不是指在 24 小时内凭空变出十年的成果；而是指在这一天之内，彻底击碎你潜意识里的自动驾驶程序，重装你的身份认同，让你在明天清晨醒来时，正式进入一场由你自己清醒选定的游戏。
+        </div>
+      </div>
+
+      <div class="col-note b-thesis">
+        <div class="note-module">
+          <div class="nm-label">
+            <span>01 / 叙事推进与底层机制（Why It Works）</span>
+            <a class="echo-link" href="#sec-mental">[跳回顶层 -&gt; 几何模型 C]</a>
+          </div>
+          <div class="nm-body"><strong>[晚间收敛为一句话指令] -&gt; [剖析游戏心流的心理学机制：目标分级消除模糊性] -&gt; [构建五级任务漏斗] -&gt; [点题升华：1天改变的是航向与操作系统]</strong>。通过将 5 年愿景降维到 1 个月 Boss 战与每日 3 个微杠杆，任务难度与当前能力精准匹配，大脑直接从“焦虑/精神熵”切入<strong>心流通道（Flow Channel）</strong>。</div>
+        </div>
+        <div class="note-module">
+          <div class="nm-label">02 / 去魅滤镜与适用边界（Anti-Hype Reality Check）</div>
+          <div class="nm-body"><strong>终极清醒剂</strong>：标题“Fix Your Entire Life in 1 Day”是极具张力的修辞钩子；作者在末段诚实地交代了真相——<strong>1 天完成的是“认知重装与航向校准（Realignment）”</strong>，而现实世界的复利兑现依赖于随后 365 天对 Daily Quests 的持续执行。</div>
+        </div>
+        <div class="user-note-wrap">
+          <button class="toggle-note-btn" onclick="toggleNote('unit-07')">[+ 添加本段随手笔记]</button>
+          <div class="user-note-area" id="note-box-unit-07">
+            <textarea data-note-id="unit-07" placeholder="在此记录你对本段的思考或个人映射..."></textarea>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ==================== 5. 底部交互式个人认知重启与行动工作台 ==================== -->
+    <section class="workbench-section" id="sec-workbench">
+      <h3 class="wb-title">ACTIONABLE PROTOCOL WORKBENCH / 交互式 1-Day 个人认知重启与行动工作台</h3>
+      <p class="wb-sub">以下所有深度书写框与行动复选框均已启用浏览器 <code>localStorage</code> 自动持久化保存。完成后点击顶部或底部的 <strong>[导出 Markdown 笔记]</strong> 即可将你填写的重启蓝图一键拷入 Obsidian 或 Notion。</p>
+
+      <div class="flow-skeleton">
+        <div class="flow-node">
+          <h5>01 / TELEOLOGY</h5>
+          <p>承认拖延不是懒，而是潜意识在用“不作为”保护旧自尊免受失败评判。</p>
+        </div>
+        <div class="flow-node">
+          <h5>02 / EXCAVATION</h5>
+          <p>用冷酷旁观者测试拆穿嘴上抱怨，直面已经习以为常的日常钝痛。</p>
+        </div>
+        <div class="flow-node">
+          <h5>03 / ANTI-VISION</h5>
+          <p>具象化 5 年不变的噩梦周二，用损失厌恶击穿舒适区惯性。</p>
+        </div>
+        <div class="flow-node">
+          <h5>04 / INTERRUPTS</h5>
+          <p>日间 4 个定时闹钟灵魂追问，当场抓获刷屏与伪勤奋逃避回路。</p>
+        </div>
+        <div class="flow-node">
+          <h5>05 / RPG SYSTEM</h5>
+          <p>锁定新身份 + 1年主线 + 1月Boss战 + 明日3个最小杠杆任务。</p>
+        </div>
+      </div>
+
+      <!-- 5 句核心原句 -->
+      <div class="quotes-box">
+        <h4>SELECTED APHORISMS / 全文最值得刻进脑子的 5 句原文核心金句</h4>
+
+        <div class="quote-item">
+          <div class="q-text">
+            <div class="q-en">01. "You aren't where you want to be because you aren't the person who would be there."</div>
+            <div class="q-zh">你之所以还没走到你想去的地方，是因为你还不是那个“理应出现在那里的人”。</div>
+          </div>
+          <button class="copy-q-btn" onclick="copyText(this, 'You aren\'t where you want to be because you aren\'t the person who would be there. — Dan Koe')">[复制金句]</button>
+        </div>
+
+        <div class="quote-item">
+          <div class="q-text">
+            <div class="q-en">02. "All behavior is goal-oriented—even self-sabotage. Procrastination is a defense mechanism protecting your ego."</div>
+            <div class="q-zh">一切行为都是目标导向的，哪怕是自我毁灭。拖延其实是保护你自尊的防御机制。</div>
+          </div>
+          <button class="copy-q-btn" onclick="copyText(this, 'All behavior is goal-oriented—even self-sabotage. Procrastination is a defense mechanism protecting your ego. — Dan Koe')">[复制金句]</button>
+        </div>
+
+        <div class="quote-item">
+          <div class="q-text">
+            <div class="q-en">03. "You cannot change what you are numb to. If you don't hate it, you will tolerate it."</div>
+            <div class="q-zh">你永远无法改变你已经麻木的事物。如果你不彻底痛恨它，你就会一直容忍它。</div>
+          </div>
+          <button class="copy-q-btn" onclick="copyText(this, 'You cannot change what you are numb to. If you don\'t hate it, you will tolerate it. — Dan Koe')">[复制金句]</button>
+        </div>
+
+        <div class="quote-item">
+          <div class="q-text">
+            <div class="q-en">04. "What would someone who only watched your behavior—ignoring your words—conclude that you actually want?"</div>
+            <div class="q-zh">如果一个观察者捂住耳朵不听你嘴上说什么，只看你的日常行为，他会断定你真正想要什么？</div>
+          </div>
+          <button class="copy-q-btn" onclick="copyText(this, 'What would someone who only watched your behavior—ignoring your words—conclude that you actually want? — Dan Koe')">[复制金句]</button>
+        </div>
+
+        <div class="quote-item">
+          <div class="q-text">
+            <div class="q-en">05. "This new identity is like creating a new shell. It won't feel like it fits at first. That's a good thing."</div>
+            <div class="q-zh">这个新身份就像给自己造一层新甲壳。起初穿在身上一定觉得不合身，但这恰恰是好事。</div>
+          </div>
+          <button class="copy-q-btn" onclick="copyText(this, 'This new identity is like creating a new shell. It won\'t feel like it fits at first. That\'s a good thing. — Dan Koe')">[复制金句]</button>
+        </div>
+      </div>
+
+      <!-- 交互式深度书写练习区 -->
+      <h4 style="color: var(--navy); margin-bottom: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 0.88rem; text-transform: uppercase;">INTERACTIVE JOURNALING PROMPTS / 1-Day 心理挖掘与游戏蓝图书写区（实时本地保存）</h4>
+      <div class="journal-grid">
+        <div class="journal-card">
+          <label for="j-pain">[PROMPT 01] 痛点挖掘与冷酷旁观者测试 (Morning Excavation)</label>
+          <div class="journal-hint">我过去一年抱怨最多却没改的 3 件事是什么？如果只看我过去一周的实际行动，旁观者会断定我真正想要什么？</div>
+          <textarea id="j-pain" placeholder="在此输入你的真实剖析..."></textarea>
+        </div>
+
+        <div class="journal-card">
+          <label for="j-antivision">[PROMPT 02] 我的反愿景噩梦 (My Anti-Vision / Cost of Losing)</label>
+          <div class="journal-hint">如果未来 5 年继续维持现状，5 年后那个让我生理性厌恶的普通周二是什么样？将其浓缩为一句话警告。</div>
+          <textarea id="j-antivision" placeholder="在此输入你的反愿景..."></textarea>
+        </div>
+
+        <div class="journal-card">
+          <label for="j-identity">[PROMPT 03] 新身份宣言与 3 年通关愿景 (Identity &amp; Vision)</label>
+          <div class="journal-hint">补全句子：“我是一个…………的人”，并写下 3 年后理想生活的一句话定义。</div>
+          <textarea id="j-identity" placeholder="我是一个..."></textarea>
+        </div>
+
+        <div class="journal-card">
+          <label for="j-quests">[PROMPT 04] 人生游戏四级任务拆解 (1Y Main / 1M Boss / 3 Daily Levers)</label>
+          <div class="journal-hint">今年的主线任务是什么？未来 30 天的 Boss 战交付物是什么？明天一早雷打不动的 3 个日常杠杆动作是什么？</div>
+          <textarea id="j-quests" placeholder="[1年主线]：&#10;[1月Boss战]：&#10;[明日3个日常杠杆]："></textarea>
+        </div>
+      </div>
+
+      <!-- 24小时最小可行性行动清单 -->
+      <div class="checklist-box">
+        <h4>MVP EXECUTION CHECKLIST / 今日 24 小时最小可行性重启核查表</h4>
+        <label class="check-item">
+          <input type="checkbox" id="chk-1" />
+          <span><strong>[STAGE 01 / 早间挖掘]</strong> 完成上方 4 个书写框的真实填写，不掩饰、不美化现状。</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" id="chk-2" />
+          <span><strong>[STAGE 02 / 日间中断]</strong> 在手机上设定 <code>11:00</code>、<code>14:00</code>、<code>17:00</code>、<code>20:00</code> 四个闹钟，标签直接命名为：<em>“你此刻正在用忙碌逃避什么？”</em></span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" id="chk-3" />
+          <span><strong>[STAGE 03 / 环境降熵]</strong> 睡前清理明早第 1 个日常任务（Daily Quest）的启动阻力（提前打开工作文档，将手机移出卧室充电）。</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" id="chk-4" />
+          <span><strong>[STAGE 04 / 笔记归档]</strong> 点击顶部或下方导出按钮，将今天写下的反愿景、个人随手记与游戏蓝图导出为 Markdown 存入笔记库。</span>
+        </label>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="globalTooltip"></div>
+  <button id="backJumpBtn">[&lt;- 返回原阅读位置]</button>
+  <div class="toast" id="toast">已复制到剪贴板</div>
+
+  <script>
+    // 1. 自适应边界的 JS 悬浮解释窗
+    const tooltip = document.getElementById('globalTooltip');
+    document.querySelectorAll('.hl-term[data-tip]').forEach(term => {
+      term.addEventListener('mouseenter', () => {
+        const text = term.getAttribute('data-tip');
+        tooltip.textContent = '[FIRST-PRINCIPLE] ' + text;
+        tooltip.classList.add('visible');
+        const rect = term.getBoundingClientRect();
+        const tipWidth = 310;
+        let left = rect.left + rect.width / 2 - tipWidth / 2;
+        if (left < 12) left = 12;
+        if (left + tipWidth > window.innerWidth - 12) {
+          left = window.innerWidth - tipWidth - 12;
+        }
+        let top = rect.top - tooltip.offsetHeight - 10;
+        if (top < 70) top = rect.bottom + 10;
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
+      });
+      term.addEventListener('mouseleave', () => {
+        tooltip.classList.remove('visible');
+      });
+    });
+
+    // 2. 双向跨节跳转与“返回原阅读位置”
+    let lastScrollY = null;
+    const backJumpBtn = document.getElementById('backJumpBtn');
+
+    window.jumpTo = function(targetSelector) {
+      const target = document.querySelector(targetSelector);
+      if (!target) return;
+      lastScrollY = window.scrollY;
+      backJumpBtn.style.display = 'block';
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      target.style.boxShadow = '0 0 0 3px #eab308';
+      setTimeout(() => { target.style.boxShadow = ''; }, 2200);
+    };
+
+    document.querySelectorAll('.echo-link').forEach(link => {
+      link.addEventListener('click', (e) => {
+        const href = link.getAttribute('href');
+        if (href) {
+          e.preventDefault();
+          window.jumpTo(href);
+        }
+      });
+    });
+
+    backJumpBtn.addEventListener('click', () => {
+      if (lastScrollY !== null) {
+        window.scrollTo({ top: lastScrollY, behavior: 'smooth' });
+        backJumpBtn.style.display = 'none';
+        lastScrollY = null;
+      }
+    });
+
+    // 3. 逐段随手笔记展开与保存
+    window.toggleNote = function(id) {
+      const box = document.getElementById('note-box-' + id);
+      if (box) box.classList.toggle('open');
+    };
+
+    document.querySelectorAll('textarea[data-note-id]').forEach(ta => {
+      const id = ta.getAttribute('data-note-id');
+      const saved = localStorage.getItem('dankoe_v4_note_' + id);
+      if (saved) {
+        ta.value = saved;
+        document.getElementById('note-box-' + id)?.classList.add('open');
+      }
+      ta.addEventListener('input', () => {
+        localStorage.setItem('dankoe_v4_note_' + id, ta.value);
+      });
+    });
+
+    // 4. 五维认知高亮过滤
+    const legendBtns = document.querySelectorAll('.legend-btn');
+    legendBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const dim = btn.getAttribute('data-dim');
+        const current = document.body.getAttribute('data-filter');
+        legendBtns.forEach(b => b.classList.remove('active'));
+        if (current === dim) {
+          document.body.removeAttribute('data-filter');
+        } else {
+          document.body.setAttribute('data-filter', dim);
+          btn.classList.add('active');
+        }
+      });
+    });
+
+    // 5. 视图切换
+    const btnPareto = document.getElementById('btnPareto');
+    const btnToggleZh = document.getElementById('btnToggleZh');
+    const btnToggleNotes = document.getElementById('btnToggleNotes');
+
+    btnPareto.addEventListener('click', () => {
+      document.body.classList.toggle('pareto-mode');
+      btnPareto.classList.toggle('active-mode');
+    });
+    btnToggleZh.addEventListener('click', () => {
+      document.body.classList.toggle('hide-zh');
+      btnToggleZh.classList.toggle('active-mode');
+    });
+    btnToggleNotes.addEventListener('click', () => {
+      document.body.classList.toggle('hide-notes');
+      btnToggleNotes.classList.toggle('active-mode');
+    });
+
+    // 6. 滚动导航高亮
+    const sections = document.querySelectorAll('[id^="sec-"]');
+    const navLinks = document.querySelectorAll('.nav-link');
+    window.addEventListener('scroll', () => {
+      let currentId = 'sec-mental';
+      sections.forEach(sec => {
+        const rect = sec.getBoundingClientRect();
+        if (rect.top <= 160) currentId = sec.id;
+      });
+      navLinks.forEach(link => {
+        link.classList.toggle('active', link.getAttribute('href') === '#' + currentId);
+      });
+    });
+
+    // 7. 底部书写区与核查表持久化
+    ['j-pain', 'j-antivision', 'j-identity', 'j-quests'].forEach(id => {
+      const el = document.getElementById(id);
+      const saved = localStorage.getItem('dankoe_v4_' + id);
+      if (saved) el.value = saved;
+      el.addEventListener('input', () => {
+        localStorage.setItem('dankoe_v4_' + id, el.value);
+      });
+    });
+
+    ['chk-1', 'chk-2', 'chk-3', 'chk-4'].forEach(id => {
+      const el = document.getElementById(id);
+      const saved = localStorage.getItem('dankoe_v4_' + id);
+      if (saved === 'true') el.checked = true;
+      el.addEventListener('change', () => {
+        localStorage.setItem('dankoe_v4_' + id, el.checked);
+      });
+    });
+
+    // 8. 复制与导出 Markdown 笔记
+    const toast = document.getElementById('toast');
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3200);
+    }
+
+    window.copyText = function(btn, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const old = btn.textContent;
+        btn.textContent = '[已复制]';
+        showToast('[COPIED] 金句已复制到剪贴板');
+        setTimeout(() => btn.textContent = old, 1800);
+      });
+    };
+
+    document.getElementById('btnExportMd').addEventListener('click', () => {
+      const pain = document.getElementById('j-pain').value.trim() || '（尚未填写）';
+      const anti = document.getElementById('j-antivision').value.trim() || '（尚未填写）';
+      const iden = document.getElementById('j-identity').value.trim() || '（尚未填写）';
+      const quests = document.getElementById('j-quests').value.trim() || '（尚未填写）';
+
+      let md = `# 认知内化与 1-Day 重启协议：How to Fix Your Entire Life in 1 Day (Dan Koe)\n\n`;
+      md += `> **第一性原理**：人类的心智是一个目标导向的控制论恒温器（Cybernetic Thermostat）。不重塑底层“身份设定值（Identity）”与“反愿景（Anti-Vision）”，任何表层行为打卡都会被潜意识当作系统误差强行拉回原位。\n\n`;
+      md += `## 一、 我的 1-Day 深度心理挖掘与游戏蓝图\n\n`;
+      md += `### 01. 痛点挖掘与冷酷旁观者测试\n${pain}\n\n`;
+      md += `### 02. 我的反愿景（Anti-Vision / 失败惩罚）\n${anti}\n\n`;
+      md += `### 03. 新身份宣言与 3 年通关愿景（Identity & Vision）\n${iden}\n\n`;
+      md += `### 04. 游戏化四级任务拆解（1Y 主线 / 1M Boss 战 / 明日 3 杠杆）\n${quests}\n\n`;
+      md += `## 二、 逐段核心拆解与个人随手批注\n\n`;
+
+      document.querySelectorAll('.para-row').forEach(row => {
+        const id = row.querySelector('.para-id')?.textContent || '';
+        const tldr = row.querySelector('.para-tldr')?.textContent || '';
+        const userNote = row.querySelector('textarea[data-note-id]')?.value.trim() || '';
+        md += `### ${id} ${tldr}\n`;
+        if (userNote) {
+          md += `- **[我的随手批注]**：${userNote}\n`;
+        }
+      });
+
+      navigator.clipboard.writeText(md).then(() => {
+        showToast('[EXPORT SUCCESS] 已将完整 Markdown 笔记（含你的思考回答与批注）复制到剪贴板');
+      }).catch(() => {
+        const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '1-Day-Life-Reset-V4-Notes.md';
+        a.click();
+        showToast('[DOWNLOADED] 已为您下载 Markdown 笔记文件');
+      });
+    });
+  </script>
+</body>
+</html>
