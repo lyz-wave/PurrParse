@@ -1,605 +1,601 @@
 import type { WorkbenchDocument } from "@/core/contracts/document-ast";
 
-export const ASYNCFLOW_DEMO_DOCUMENT: WorkbenchDocument = {
-  id: "demo-repo-asyncflow",
+export const RCD_CEDI_DEMO_DOCUMENT: WorkbenchDocument = {
+  id: "demo-repo-rcd-cedi",
   modeId: "repo-deconstruct",
   modeName: "源码架构拆解",
   isDemo: true,
-  title: "AsyncFlow — 高并发分布式延迟任务调度与幂等引擎源码拆解",
-  subtitle: "Mode 03 Demo · Go + Redis Lua 原子时间轮 / 死信重试 / Worker 协程池深度架构解剖",
+  title: "JiaxinTrans/RCD_CEDI — 施工区多车交互风险量化与两阶段可达性引擎",
+  subtitle:
+    "Mode 03 Demo · Python 3.10 + Numba @njit / Stage 1 RCD 物理遮挡裁剪 (rcd.py) + Stage 2 CEDI 最优避险困难度搜救 (vehicle.py)",
   badges: [
-    "Demo 预设示例 · 后端架构源码",
-    "Go 1.22 + Redis Lua",
+    "JiaxinTrans/RCD_CEDI · BUILTIN DEMO",
+    "Python + Numba JIT",
     "4 大核心模块 + L1-L3 压力测试",
   ],
-  createdAt: "2026-04-01T00:00:00.000Z",
-  updatedAt: "2026-04-01T00:00:00.000Z",
+  createdAt: "2026-11-18T00:00:00.000Z",
+  updatedAt: "2026-11-18T00:00:00.000Z",
   layoutRatio: [58, 42],
   dimensions: [
     {
       key: "dim1",
       colorSlot: "yellow",
-      label: "系统入口/路由",
-      extractionRule: "HTTP/RPC 入口与主调度起点。",
+      label: "入口准备",
+      extractionRule: "detect_vehicle_conflict 门禁与 PreparedAB 主对碰撞角点缓存。",
     },
     {
       key: "dim2",
       colorSlot: "red",
-      label: "核心状态与算法 (悬停释义)",
-      extractionRule: "并发锁、原子脚本、状态机流转核心（附面试口述原理解析）。",
+      label: "核心判据",
+      extractionRule: "RCD P2 的 I_C / S_C / ALT_C 判据以及 Numba 下界早停核心逻辑。",
       enableTooltip: true,
     },
     {
       key: "dim3",
       colorSlot: "blue",
-      label: "边界校验与容错",
-      extractionRule: "幂等防御、指数退避重试、优雅停机与兜底策略。",
+      label: "边界容错",
+      extractionRule: "初始接触未定状态拦截、零清出速度补全及浮点数等值容差对齐。",
     },
     {
       key: "dim4",
       colorSlot: "green",
-      label: "性能与并发权衡",
-      extractionRule: "协程池限流、Lua RTT 合并与空间换时间权衡。",
+      label: "性能权衡",
+      extractionRule: "nogil Numba 候选网格升序搜索与解析跟驰尾界 linear_tail_bound。",
     },
     {
       key: "dim5",
       colorSlot: "purple",
-      label: "潜在盲区/追问点",
-      extractionRule: "面试官高频追问漏洞、时钟偏移或内存放大风险。",
+      label: "审计盲区",
+      extractionRule: "raw_rcd_audit 无剪枝独立复核与候选热路径优化切入点。",
     },
   ],
   labels: {
-    paretoButton: "[20/80 核心源码聚焦]",
+    paretoButton: "[20/80 核心]",
     toggleSecondaryButton: "[显/隐逻辑白话]",
     toggleNotesButton: "[显/隐面试批注]",
-    exportMdButton: "[导出面试手记 Markdown]",
+    exportMdButton: "[导出架构手记 Markdown]",
     exportHtmlButton: "[编译离线单文件 .HTML]",
     userNoteButton: "[+ 添加本模块二次开发备忘]",
-    userNotePlaceholder: "在此记录该模块在简历上的阐述切入点或准备改造的 Patch 思路...",
-    transitionPrefix: "[GLUE CODE / 装配过渡层]",
+    userNotePlaceholder: "在此记录 RCD/CEDI 算法理解切入点或可复现/改造思路...",
+    transitionPrefix: "[AUDIT & HELPER / 交叉审计收尾层]",
     mentalNavLabel: "00. 20/80 架构图与调用链",
     bottomNavLabel: "08. 简历武装、压力测试与改造方案",
   },
   sections: [
     {
       id: "sec-mod-1",
-      navLabel: "01. 幂等入队引擎",
+      navLabel: "01. 入口契约与主对准备",
       navRole: "核心入口",
-      title: "01. internal/scheduler/enqueue.go · 幂等校验与延迟时间轮投递",
-      taskBadge: "核心源码 · 防重入 + Redis ZSET + Hash 状态落盘",
+      title: "01. src/rcd_cedi/api.py · 入口边界守卫与场景几何统一准备",
+      taskBadge: "核心源码 · detect_vehicle_conflict + PreparedAB 冻结契约",
     },
     {
       id: "sec-mod-2",
-      navLabel: "02. Lua 原子捞取",
+      navLabel: "02. RCD P2 遮挡裁剪",
       navRole: "核心引擎",
-      title: "02. internal/store/poll_due.lua · 零竞态到期任务批量摘取与租约续期",
-      taskBadge: "核心源码 · 消除分布式锁开销",
+      title: "02. src/rcd_cedi/rcd.py · I_C 投影、S_C 全局路径符号与 ALT_C 净空检验",
+      taskBadge: "核心源码 · Eq. (10)-(16) 与零清出速度物理补全",
     },
     {
       id: "sec-mod-3",
-      navLabel: "03. Worker 协程池",
-      navRole: "并发执行",
-      title: "03. internal/worker/pool.go · 有界信号量并发控制与指数退避重试",
-      taskBadge: "核心源码 · 过载保护 + 优雅退避",
+      navLabel: "03. Numba 下界搜救",
+      navRole: "核心求解",
+      title: "03. src/rcd_cedi/cedi/vehicle.py · 候选升序早停与解析跟驰尾界",
+      taskBadge: "核心源码 · own_bound_stop 剪枝 + linear_tail_bound",
     },
     {
       id: "sec-mod-4",
-      navLabel: "04. 优雅停机与心跳",
-      navRole: "容错兜底",
-      title: "04. internal/worker/shutdown.go · In-Flight 任务等待与租约回收",
-      taskBadge: "非核心外围但面试必问的高可用拼图",
+      navLabel: "04. 原始 RCD 独立审计",
+      navRole: "交叉验算",
+      title: "04. src/rcd_cedi/audit.py · 关闭剪枝后的纯几何终态一致性复核",
+      taskBadge: "外围审计校验层（可按 20/80 略读，科研实证可信度关键拼图）",
     },
   ],
   topMentalModel: {
     title: "00. 20/80 架构导读与主调用链路图",
-    subtitle: "用 20% 核心引擎源码覆盖 80% 面试拷问点：避免背目录，直接掌控状态流与并发边界",
+    subtitle:
+      "跳过 CSV 工具链与 GIF 绘图脚手架，用 4 个核心 Python 模块打通「物理可达冲突筛选 -> 受限二维避险难度优化」全链路",
     rawSummaryBanner: {
       tag: "一句话看透项目本质",
-      body: "AsyncFlow 本质上是一个基于「Redis ZSET 延迟有序集合 + Lua 单线程原子摘取 + Go 有界 Worker 池」的轻量级分布式异步调度引擎：它用一条原子 Lua 脚本替代了繁重的 Redlock 分布式锁，实现了万级 QPS 下的精确一次投递（At-Least-Once + 业务幂等）和秒级故障恢复。",
+      body: "RCD_CEDI 是一个面向高速公路施工区多车强交互场景的统一风险量化框架：Stage 1 通过 RCD 过滤被周围车辆物理遮挡的「伪直面冲突」，Stage 2 再用按自身控制代价下界升序排列的 Numba @njit 搜索求解两车各自的最小避险困难度（CEDI），兼顾施工区非对称约束与毫秒级计算性能。",
     },
     cards: [
       {
         tag: "20% 必读核心引擎",
-        body: "集中精力吃透 3 块逻辑：1) Enqueue 的双写去重与 ZSET 分片打分；2) PollDue 的 Redis Lua 原子状态迁移（Delayed -> Processing + Invisible Timeout）；3) Worker Pool 的 panic 捕获、指数退避与死信转移。",
+        body: "重点啃透 3 段核心链路：1) api.py 中初始接触防御与 PreparedAB 单次准备复用；2) rcd.py 中 I_C 投影、S_C 跨侧符号判据及严格早于碰撞时间 t_ab 的 ALT_C 净空检定；3) vehicle.py 里候选排序早停 own_bound_stop 与解析尾界 linear_tail_bound。",
       },
       {
         tag: "80% 可跳过外围文件",
-        body: "CLI 参数解析 (cmd/cli)、Prometheus 指标暴露端点、OpenAPI YAML 定义及数据库 Migration 脚手架属于标准工程模板，面试时一笔带过即可，切忌浪费时间精读。",
+        body: "csv_tools/ 下的轨迹表格读写、examples/ 示例脚本、asset/gifs 可视化生成脚本及 pyproject.toml 装配文件属于典型实验工程外围，初读源码时无需逐行深究。",
       },
       {
-        tag: "面试最爱追问的 3 条暗线",
-        body: "1) 多 Worker 实例同时扫 ZSET 如何避免同一任务被重复执行？ 2) Worker 执行到一半进程 OOM 被杀掉，任务会永久卡在 Processing 吗？ 3) 百万级延迟任务堆积在单个 Redis ZSET 热 Key 上如何打散扩容？",
+        tag: "面试与论文最爱深挖的 3 条暗线",
+        body: "1) 为何传统成对 SSM 对 A-B 给出对称分数会失真？2) 旁车相对横向速度 w 逼近 0 时 ALT_C 如何严谨定义而不触发除零？3) 为何 search() 一旦遇到 lower >= best 就可以安全 break 终止剩余所有网格点？",
       },
     ],
     comparisonPair: {
-      leftTitle: "普通面试者复述（只浮于功能表层）",
+      leftTitle: "传统成对替代安全指标（Pairwise SSM 的盲区）",
       leftTone: "danger",
       leftItems: [
-        "我做了一个异步任务系统，用 Go 把任务存进 Redis ZSET，后台开定时器每秒轮询捞取并执行。",
-        "被问到并发重复消费时回答：我在代码里加了 Redis SETNX 分布式锁（随即被追问锁过期、锁续期与死锁问题而卡壳）。",
+        "假设同车道前排 A、B、C、D 的每一对冲突都可以直接发生，忽视中间车辆 B 实际挡死了 A 与 C/D 的直接物理可达性。",
+        "给交互双方赋予单一共享风险值，忽略例如 B 后有紧贴车 A、侧旁又有施工区或旁车 C 遮挡时，B 承受远高于 A 的实际避险困难。",
       ],
-      rightTitle: "架构师级拆解（直击底层权衡与原子性）",
+      rightTitle: "RCD_CEDI 两阶段非对称框架（物理约束 + 双视角求解）",
       rightTone: "success",
       rightItems: [
-        "我将 ZSET 到期扫描、任务弹出与租约超时重入队列合并进单段 Lua 脚本，利用 Redis 单线程事件循环消除跨节点锁争抢与 3 次 RTT 网络往返。",
-        "同时为每个任务引入基于 visibility_timeout 的隐形租约队列，Worker 崩溃后无需人工干预，租约到期自动触发 Requeue。",
+        "Stage 1 先经 P1 扫掠矩形碰撞与 P2 旁车阻塞裁剪（I_C + S_C + ALT_C < t_ab），先淘汰物理不可达的伪冲突。",
+        "Stage 2 对 A、B 各自从主车视角运行受周围车辆响应与道路/施工区几何约束的 CEDI 优化，并用 audit.py 独立验证终态无误差。",
       ],
     },
     diagram: {
-      title: "AsyncFlow 核心调度与状态流转调用链（点击节点定位对应源码）",
-      hint: "蓝色实线为主链路调用，点击任意模块直接跳转右侧源码逐行拆解",
+      title: "RCD_CEDI 核心调用链路与双向求解图（点击节点定位右侧源码）",
+      hint: "先在 Stage 1 判断物理可达性，再在 Stage 2 按下界升序剪枝并可选触发 raw_rcd 独立审计",
       rankdir: "LR",
       nodes: [
         {
           id: "n_api",
-          label: "1. HTTP / gRPC 入口",
-          subLabel: "Idempotency Check",
+          label: "1. 入口契约与准备",
+          subLabel: "api.py · P1 / P2",
           targetUnitId: "mod-1-u-1",
           colorSlot: "yellow",
         },
         {
-          id: "n_zset",
-          label: "2. Redis Pipeline",
-          subLabel: "Hash + ZSET 延迟桶",
-          targetUnitId: "mod-1-u-1",
-          colorSlot: "blue",
-        },
-        {
-          id: "n_lua",
-          label: "3. Lua 原子摘取",
-          subLabel: "ZRANGE + ZADD 租约",
+          id: "n_rcd",
+          label: "2. RCD P2 遮挡裁剪",
+          subLabel: "rcd.py · I_C / S_C / ALT",
           targetUnitId: "mod-2-u-1",
           colorSlot: "red",
         },
         {
-          id: "n_pool",
-          label: "4. Worker 协程池",
-          subLabel: "Semaphore + Backoff",
+          id: "n_vehicle",
+          label: "3. Numba 下界搜救",
+          subLabel: "vehicle.py · @njit",
           targetUnitId: "mod-3-u-1",
           colorSlot: "green",
         },
         {
-          id: "n_grace",
-          label: "5. 优雅退场 & 回收",
-          subLabel: "WaitGroup + Reclaim",
+          id: "n_audit",
+          label: "4. 原始几何复核",
+          subLabel: "audit.py · raw_rcd",
           targetUnitId: "mod-4-u-1",
           colorSlot: "purple",
         },
       ],
       edges: [
-        { from: "n_api", to: "n_zset", label: "SETNX 防重入" },
-        { from: "n_zset", to: "n_lua", label: "到期时间戳命中" },
-        { from: "n_lua", to: "n_pool", label: "原子分发 Payload" },
-        { from: "n_pool", to: "n_grace", label: "ACK / NACK 退避" },
+        { from: "n_api", to: "n_rcd", label: "缓存" },
+        { from: "n_rcd", to: "n_vehicle", label: "可达" },
+        { from: "n_vehicle", to: "n_audit", label: "复核" },
       ],
     },
-    glossaryTitle: "项目底层核心机制速查表（面试脱口秀弹药库）",
+    glossaryTitle: "RCD_CEDI 核心机制词典（悬停与面试快查）",
     glossary: [
       {
-        term: "Visibility Timeout（隐形租约队列）",
-        badge: "核心机制",
-        definition: "任务被 Worker 领走时不直接删除，而是把它的 Score 加上 30s 租约重新写入 Processing ZSET；若 Worker 崩溃未按时 ACK，30s 后其他节点会自动重新捞取。",
+        term: "PreparedAB 共享缓存",
+        badge: "Stage 1 复用",
+        definition:
+          "将主对 (A, B) 的 P1 扫掠结果、最近角点对 pairs 与单位相对速度向量 theta_ab 一次冻结计算，周边每增加一辆旁车 C 仅需常数次点积与叉积判断。",
       },
       {
-        term: "Redis Lua 单线程原子化",
-        badge: "并发保障",
-        definition: "把「查到期列表 -> 删延迟队 -> 写进行中租约 -> 更新元数据状态」打包为单条 EVALSHA，Redis 执行期间隔离所有其他命令，彻底省去外部分布式锁。",
+        term: "I_C & S_C 阻塞走廊",
+        badge: "Eq. (10)-(11)",
+        definition:
+          "I_C 检验旁车 C 四角点在 theta 方向上均严格落入 V_i 与 E_i 之间；S_C 检查跨路径两侧变号，合取成立才进入撤离净空时间比较。",
       },
       {
-        term: "Idempotency Key + TTL 窗口",
-        badge: "防重入",
-        definition: "请求入队前用业务方提供的幂等键做原子占位，避免网关重试或上游抖动产生幽灵重复任务。",
+        term: "Own-Bound Stop (lower >= best)",
+        badge: "无损剪枝",
+        definition:
+          "由于总代价 sqrt(lower^2 + env^2) 恒不小于主车自身代价下界 lower，且候选数组预先按 lower 升序排列，一旦 lower >= best 即可直接 break 结束全部剩余候选。",
       },
       {
-        term: "Jittered Exponential Backoff",
-        badge: "防雪崩",
-        definition: "失败重试延迟按 2^attempt + 随机抖动计算，避免下游恢复瞬间被所有失败任务同时齐射打垮（Thundering Herd）。",
+        term: "Linear Tail Bound",
+        badge: "解析上确界",
+        definition:
+          "无需在 ET 之后继续逐时间步积分，直接解析求解 r >= remaining 区间上 -2(A + B*r)/(k*r^2) 的全局上确界，把长尾制动评估降为 O(1) 闭式运算。",
       },
     ],
   },
   units: [
     {
       id: "mod-1-u-1",
-      unitCode: "enqueue.go · Unit 1.1",
+      unitCode: "api.py · Unit 1.1",
       sectionId: "sec-mod-1",
-      sectionTitle: "01. internal/scheduler/enqueue.go · 幂等校验与延迟时间轮投递",
-      sectionTask: "核心源码 · 防重入 + Pipeline 原子入队",
+      sectionTitle: "01. src/rcd_cedi/api.py · 入口边界守卫与场景几何统一准备",
+      sectionTask: "核心入口 · ID 唯一校验 + 初始重叠门禁 + PreparedAB 传递",
       weight: "core",
-      tldr: "通过 TxPipeline 把幂等键占位、任务实体 Hash 写入和 ZSET 时间轮投递合并为单次网络往返。",
+      tldr: "detect_vehicle_conflict 严拒静默阈值与初始重叠误判，一次性冻结 A-B 几何给所有旁车复用。",
       primaryKind: "code",
-      codeLanguage: "go",
-      filePath: "internal/scheduler/enqueue.go",
-      primaryText: `func (s *Scheduler) Enqueue(ctx context.Context, task *TaskPayload, delay time.Duration) (string, error) {
-	if task.IdempotencyKey != "" {
-		ok, err := s.rdb.SetNX(ctx, "idem:"+task.IdempotencyKey, task.ID, 24*time.Hour).Result()
-		if err != nil {
-			return "", fmt.Errorf("idempotency guard failed: %w", err)
-		}
-		if !ok {
-			return "", ErrDuplicateTask
-		}
-	}
-
-	executeAt := time.Now().Add(delay).UnixMilli()
-	shardBucket := s.resolveDelayBucket(task.ID)
-
-	pipe := s.rdb.TxPipeline()
-	pipe.HSet(ctx, "task:meta:"+task.ID, map[string]any{
-		"payload":    task.RawBody,
-		"max_retry":  task.MaxRetry,
-		"attempt":    0,
-		"state":      StateScheduled,
-	})
-	pipe.ZAdd(ctx, shardBucket, redis.Z{
-		Score:  float64(executeAt),
-		Member: task.ID,
-	})
-	if _, err := pipe.Exec(ctx); err != nil {
-		return "", err
-	}
-	return task.ID, nil
-}`,
+      codeLanguage: "python",
+      filePath: "src/rcd_cedi/api.py",
+      primaryText: `def detect_vehicle_conflict(a: VehicleState, b: VehicleState,
+                            surrounding: Iterable[VehicleState] = ()) -> RCDResult:
+    others = _scene(a, b, surrounding)
+    av, bv = _rectangle(a), _rectangle(b)
+    et = swept_contact(av, bv)
+    args = dict(subject_vehicle=a.vid, opponent_vehicle=b.vid, initial_et=et)
+    if et is None:
+        return RCDResult('no_predicted_contact', predicted_contact=False, reachable=False, **args)
+    if et <= EPS:
+        return RCDResult('initial_contact', predicted_contact=True, reachable=True, **args)
+    unresolved = tuple(c.vid for c in others
+                       if swept_contact(av, _rectangle(c)) == 0.
+                       or swept_contact(bv, _rectangle(c)) == 0.)
+    if unresolved:
+        return RCDResult('unresolved_initial_surrounding_contact', predicted_contact=True,
+                         reachable=None, unresolved_vehicles=unresolved, **args)
+    prepared = rcd.prepare_ab(av, bv)
+    blockers = [c.vid for c in others if rcd.evaluate_prepared_c(prepared, _rectangle(c))['blocks']]
+    return RCDResult('blocked' if blockers else 'reachable', predicted_contact=True,
+                     reachable=not blockers, blockers=tuple(blockers), **args)`,
       formulas: [
         {
           latex: "",
-          flowLabel: "STATE & DATA FLOW",
-          flowText: "TaskPayload -> SETNX(idem:{key}, 24h) -> shardBucket(CRC32 % N) -> TxPipeline(HSet meta + ZAdd score=executeAt)",
+          flowLabel: "STAGE 1 ENTRY GUARD",
+          flowText:
+            "_scene(unique vid) -> swept_contact(A,B) -> reject initial surrounding overlap (0.0) -> prepare_ab(A,B) -> loop C",
         },
       ],
       highlights: [
         {
-          text: `s.rdb.SetNX(ctx, "idem:"+task.IdempotencyKey, task.ID, 24*time.Hour)`,
+          text: "swept_contact(av, _rectangle(c)) == 0.",
           dim: "dim3",
+          tooltip: "初始碰撞防呆：若旁车 C 在 t=0 已与主车 A 或 B 物理贴合，立即返回 reachable=None 的未定状态，绝不静默标为可通行或阻挡。",
         },
         {
-          text: "shardBucket := s.resolveDelayBucket(task.ID)",
+          text: "prepared = rcd.prepare_ab(av, bv)",
           dim: "dim2",
-          tooltip: "分片延迟桶：通过哈希将任务打散到 N 个独立的 ZSET Key，避免百万级延迟任务压垮单个 Redis Slot 的单线程与大 Key 问题。",
+          tooltip: "PreparedAB 冻结缓存：提前一次求出 A-B 的扫掠接触时间、角点对 (V, E) 和单位相对速度向量 theta_ab。",
         },
         {
-          text: "pipe := s.rdb.TxPipeline()",
+          text: "others = _scene(a, b, surrounding)",
+          dim: "dim1",
+        },
+        {
+          text: "evaluate_prepared_c(prepared, _rectangle(c))",
           dim: "dim4",
-        },
-        {
-          text: "executeAt := time.Now().Add(delay).UnixMilli()",
-          dim: "dim5",
         },
       ],
       secondaryBlockText:
-        "【逐层拆解】当调用方发起一次延迟任务投递时：1) 若携带 IdempotencyKey，先用 Redis SetNX 做 24 小时防重入闸门；2) 计算执行时间戳（毫秒级）并映射到分片 ZSET 桶，防止单 Key 过大阻塞 Redis；3) 使用 MULTI/EXEC 事务管道一次性打包写入任务元数据 Hash 与 ZSET 调度分值，确保不会出现「ZSET 里有了任务 ID 但找不到任务体」的半残状态。",
+        "【入口契约设计】科研计算库最容易在脏数据（比如旁车 ID 重复、或者标注框在初始时刻就已经重合）时静默给出看似合理的数值。api.py 通过 _scene 强制拦截重复 vid，并用 unresolved_initial_surrounding_contact 把初始重叠样本显式暴露给上层，保证评估集干净无假阳性。",
       notes: [
         {
           label: "01 / 调用链上下文与双向锚点",
-          body: "上游来自 API Gateway 的 POST /v1/tasks 请求；入队后数据静默躺在分片 ZSET 中，等待调度循环触发下一个核心模块的 Lua 脚本捞取。",
+          body: "detect_vehicle_conflict 完成场景 P1 与 P2 筛选后，将每个旁车的几何详情交由下一节 rcd.py 执行精细遮挡判定。",
           echoTargetId: "mod-2-u-1",
-          echoLabel: "[-> 前往查看如何零锁捞取该 ZSET]",
+          echoLabel: "[-> 进入 rcd.py 查看 P2 遮挡数学判据]",
         },
         {
           label: "02 / 核心源码机制拆解",
-          body: "注意这里用的是 TxPipeline() 而非普通 Pipeline()：TxPipeline 会在底层自动包裹 MULTI ... EXEC，保证 HSet 与 ZAdd 在 Redis 服务端被顺序连续执行，不会夹杂其他客户端的中间状态。",
+          body: "注意源码注释明确写明「No forward-distance or ET threshold is silently applied」——函数不暗中截断预测时域或前向距离，所有风险参数均通过显式 Config 注入，保障科研实验可复现性。",
         },
         {
           label: "03 / 设计取舍与替代方案",
-          body: "为什么把 Payload 存在独立的 Hash (task:meta:{id}) 而不是直接序列化成 JSON 塞进 ZSET Member？因为 ZSET Member 如果包含数 KB 的大文本会极大膨胀跳跃表内存，且每次移动队列都需要重复传输整个 Payload。",
+          body: "采用不可变 dataclass 封装 PreparedAB 并在循环外构造，避免在多旁车场景下对每辆旁车 C 重复执行 swept_contact(A, B) 与角点配对搜索。",
         },
         {
           label: "04 / 面试官高频深挖追问",
-          body: "追问：「如果 SetNX 成功了，但后面的 pipe.Exec() 网络断开超时，调用方重试时岂不是会误报 ErrDuplicateTask 导致任务永久丢失？」",
-          calloutBox: "满分破局：这里暴露了跨两步写操作的极小竞态窗口！进阶改法是把 SetNX 与 HSet/ZAdd 一起合并进同一个 Lua 入队脚本；或者在捕获 Exec 错误时主动执行一次补偿 Del(idemKey)。",
+          body: "追问：「如果某场景里有 2 辆旁车同时都在撞击走廊里，代码会短路径退出还是全部检测？」",
+          calloutBox: "观察第 18 行循环：for c in others 故意未在发现第一个 blocker 时提前 break，而是把每辆旁车的判定写进 diagnostics['surrounding'] 并收集全部 blockers——换取完整的可解释诊断轨迹。",
         },
       ],
     },
     {
       id: "mod-2-u-1",
-      unitCode: "poll_due.lua · Unit 2.1",
+      unitCode: "rcd.py · Unit 2.1",
       sectionId: "sec-mod-2",
-      sectionTitle: "02. internal/store/poll_due.lua · 零竞态到期任务批量摘取与租约续期",
-      sectionTask: "核心源码 · 原子迁移与 Visibility Timeout",
+      sectionTitle: "02. src/rcd_cedi/rcd.py · I_C 投影、S_C 全局路径符号与 ALT_C 净空检验",
+      sectionTask: "核心几何 · Eq. (10)-(16) 物理阻挡走廊与零速补全",
       weight: "core",
-      tldr: "利用 Redis Lua 脚本在单个事件循环帧内完成「查到期 -> 移出等待队 -> 写入租约保护期 -> 标记重试次数」四步原子迁移。",
+      tldr: "联合纵向投影 I_C、全局路径跨侧符号 S_C 及严格小于 t_ab 的撤离净空时间，精确识别谁真正挡在碰撞路线上。",
       primaryKind: "code",
-      codeLanguage: "lua",
-      filePath: "internal/store/poll_due.lua",
-      primaryText: `-- KEYS[1]: delay_zset_bucket, KEYS[2]: inflight_zset
--- ARGV[1]: now_ms, ARGV[2]: batch_limit, ARGV[3]: lease_timeout_ms
-local now = tonumber(ARGV[1])
-local limit = tonumber(ARGV[2])
-local lease_deadline = now + tonumber(ARGV[3])
+      codeLanguage: "python",
+      filePath: "src/rcd_cedi/rcd.py",
+      primaryText: `TIME_ATOL = 1e-9
+TIME_RTOL = 1e-9
 
-local due_ids = redis.call("ZRANGEBYSCORE", KEYS[1], "-inf", now, "LIMIT", 0, limit)
-if #due_ids == 0 then
-    return {}
-end
+def clears_before_contact(alt: float, t_ab: float) -> bool:
+    return (math.isfinite(alt) and alt < t_ab
+            and not math.isclose(alt, t_ab, rel_tol=TIME_RTOL, abs_tol=TIME_ATOL))
 
-for _, id in ipairs(due_ids) do
-    redis.call("ZREM", KEYS[1], id)
-    redis.call("ZADD", KEYS[2], lease_deadline, id)
-    local meta_key = "task:meta:" .. id
-    redis.call("HSET", meta_key, "state", "PROCESSING")
-    redis.call("HINCRBY", meta_key, "attempt", 1)
-end
-
-return due_ids`,
+def evaluate_c_obstruction(b, c, theta, pairs, t_ab, c_corners=None) -> dict:
+    corners = c.corners() if c_corners is None else c_corners
+    products = tuple(dot(sub(cm, pair.V), theta) * dot(sub(cm, pair.E), theta)
+                     for pair in pairs for cm in corners)
+    i_c = all(value < -EPS for value in products)
+    sides = tuple(cross(sub(cm, pair.V), theta)
+                  for pair in pairs for cm in corners)
+    s_c = not (all(value > EPS for value in sides)
+               or all(value < -EPS for value in sides))
+    if not (i_c and s_c):
+        return dict(I_C=int(i_c), S_C=int(s_c), blocks=False, reachable=True)`,
       formulas: [
         {
-          latex: "",
-          flowLabel: "ATOMIC TRANSITION",
-          flowText: "KEYS[1](delay_zset) --[ZRANGEBYSCORE <= now]--> ZREM + ZADD(KEYS[2], now + lease) + HSET(PROCESSING)",
+          latex: "\\text{P2 blocks} \\iff I_C = 1 \\land S_C = 1 \\land \\text{ALT}_C \\ge t_{AB}",
+          flowLabel: "RCD P2 CRITERION",
+          flowText: "corners in (V_i, E_i) slab (I_C) AND crosses corridor sides (S_C) AND fails strict clearance",
         },
       ],
       highlights: [
         {
-          text: `redis.call("ZRANGEBYSCORE", KEYS[1], "-inf", now, "LIMIT", 0, limit)`,
+          text: "i_c = all(value < -EPS for value in products)",
           dim: "dim2",
-          tooltip: "时间窗口限流捞取：使用 LIMIT 0 batch_limit 控制单次 Lua 执行耗时在微秒级，防止一次性捞取十万条任务阻塞整个 Redis 主线程。",
+          tooltip: "Eq. (10) I_C 纵向包夹：向量点积乘积恒负，意味着旁车 C 的 4 个矩形角点全部严格位于首触点 pair.V 与终点 pair.E 沿相对速度方向 theta 的夹层内。",
         },
         {
-          text: `redis.call("ZADD", KEYS[2], lease_deadline, id)`,
+          text: "s_c = not (all(value > EPS for value in sides) or all(value < -EPS for value in sides))",
+          dim: "dim2",
+          tooltip: "Eq. (11) 全局路径符号判据 S_C：用二维叉积检测 C 是否跨越碰撞走廊两侧，避免把完全偏在通道同一旁侧的车辆误判成阻塞车。",
+        },
+        {
+          text: "not math.isclose(alt, t_ab, rel_tol=TIME_RTOL, abs_tol=TIME_ATOL)",
           dim: "dim3",
+          tooltip: "Eq. (16) 临界保守判定：即使浮点算出来 alt 仅略微逼近 t_ab（误差 1e-9 内），也按「同时刻未彻底让开」严格判为阻挡。",
         },
         {
-          text: `local lease_deadline = now + tonumber(ARGV[3])`,
+          text: "if not (i_c and s_c):",
           dim: "dim4",
-        },
-        {
-          text: `local meta_key = "task:meta:" .. id`,
-          dim: "dim5",
         },
       ],
       secondaryBlockText:
-        "【核心引擎灵魂】这是整个项目面试含金量最高的文件。多台分布式调度器同时高频轮询这同一个 Redis 实例，但绝不会产生重复派发：因为整段 Lua 脚本在 Redis 内核里是串行原子执行的。Worker A 扫走这批 ID 的同时，它们已被瞬间从 delay_zset 删除并打上 future lease_deadline 移入 inflight_zset。",
+        "【几何裁剪灵魂】如果只用纵向区间的点积符号 I_C，旁车道里哪怕横向相隔 5 米的车只要纵向齐头都会触发 False Positive；加上跨路径叉积变号 S_C，就能精准锁住真正斜穿/横挡在碰撞走廊中的车辆，最后再用 ALT_C 是否严格早于 t_ab 决定它会不会在 A-B 相撞前自己开走。",
       notes: [
         {
           label: "01 / 调用链上下文与双向锚点",
-          body: "由 Scheduler 主 Ticker 循环通过 EVALSHA 调用，返回的 due_ids 会立刻送入 Worker Pool 协程池执行真实业务逻辑。",
+          body: "被 api.py 的 detect_vehicle_conflict 与 audit.py 的 raw_rcd_audit 共同调用，是 Stage 1 判定的唯一事实内核。",
           echoTargetId: "mod-1-u-1",
-          echoLabel: "[<- 回看任务是如何打分进入 delay_zset 的]",
+          echoLabel: "[<- 回看 api.py 中的 PreparedAB 构造]",
         },
         {
           label: "02 / 核心源码机制拆解",
-          body: "注意 `inflight_zset` 的 Score 存的是 `now + lease_timeout_ms`（未来超时时间）。这意味着我们不需要额外维护定时扫描僵尸线程：另一个巡检协程只需对 `inflight_zset` 运行几乎完全相同的 Lua 脚本（把到期未 ACK 的任务扔回 delay_zset），即可自动完成宕机自愈。",
+          body: "注意当相对横向速度 w 逼近 0（例如旁车完全静止或与目标车平行同速行驶）时，源码并没有放任 ALT_C 除零崩溃，而是直接设为 inf 并按零清出速度场景（zero_clearing_speed_case）显式判定 blocks=True。",
         },
         {
           label: "03 / 设计取舍与替代方案",
-          body: "为什么在 Redis 里用 ZSET + Lua 而不是直接用 Redis Stream (XREADGROUP)？因为原生的 Stream 消费组不支持自定义未来任意时间的延迟投递，ZSET 天然以 Score 承载任意毫秒时间戳。",
+          body: "在 S_C 判据实现中，代码用 `cross(cm - pair.V, theta)` 替代了论文图示里的法向量点积 `dot(C_m - V_i, theta_perp)`：左手法向量只是全局取反所有符号，不改变“是否全同号”的逻辑结果，还省去一次法向量构造。",
         },
         {
           label: "04 / 面试官高频深挖追问",
-          body: "追问：「你在 Lua 脚本里拼接了动态 Key `task:meta:` .. id，如果在 Redis Cluster 集群模式下运行这段脚本会怎样？」",
-          calloutBox: "高危陷阱提醒：Redis Cluster 要求单条 Lua 脚本中访问的所有 Key 必须位于同一个 Hash Slot！若直接拼装 `task:meta:` .. id 而不加 `{hashTag}` 且 KEYS 未全部显式传入，集群模式下会直接报错 CROSSSLOT Keys in request don't hash to the same slot！",
+          body: "追问：「为什么要把 TIME_ATOL 设到 1e-9 且对相等情况判作 blocked，这难道不是浮点过度保守吗？」",
+          calloutBox: "工程与论文依据：Eq. (17) 要求「strict clearance before first contact（alt_C < t_ab）」。在物理上「撞击瞬间刚好擦出界外」依然属于危险阻塞边界，用 1e-9 容差对齐 math.isclose 可杜绝浮点舍入把压线冲突误报成无阻挡。",
         },
       ],
     },
     {
       id: "mod-3-u-1",
-      unitCode: "pool.go · Unit 3.1",
+      unitCode: "vehicle.py · Unit 3.1",
       sectionId: "sec-mod-3",
-      sectionTitle: "03. internal/worker/pool.go · 有界信号量并发控制与指数退避重试",
-      sectionTask: "并发治理 · 背压限流 + 抖动指数退避",
+      sectionTitle: "03. src/rcd_cedi/cedi/vehicle.py · 候选升序早停与解析跟驰尾界",
+      sectionTask: "核心求解 · @njit 网格分支定界剪枝 + linear_tail_bound 闭式上界",
       weight: "core",
-      tldr: "用带缓冲 Channel 充当轻量级并发信号量实施背压，防止突发到期洪峰把 Goroutine 和下游 DB 打爆。",
+      tldr: "search() 利用自身代价单调下界做无损早停，再用解析尾界绕过 ET 之后耗时费力的逐帧时间积分。",
       primaryKind: "code",
-      codeLanguage: "go",
-      filePath: "internal/worker/pool.go",
-      primaryText: `func (p *WorkerPool) Dispatch(ctx context.Context, taskID string) {
-	select {
-	case p.sem <- struct{}{}:
-	case <-ctx.Done():
-		return
-	}
-
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
-		defer func() { <-p.sem }()
-		defer p.recoverPanic(taskID)
-
-		execCtx, cancel := context.WithTimeout(ctx, p.taskTimeout)
-		defer cancel()
-
-		err := p.handler.Execute(execCtx, taskID)
-		if err == nil {
-			p.ackSuccess(ctx, taskID)
-			return
-		}
-		p.scheduleRetryOrDLQ(ctx, taskID, err)
-	}()
-}`,
+      codeLanguage: "python",
+      filePath: "src/rcd_cedi/cedi/vehicle.py",
+      primaryText: `@njit(cache=True)
+def search(states, axes, radii, candidates, cfg, za, zl, zu, origin, times, include_tail):
+    best, best_ax, best_ay, best_index = math.inf, math.nan, math.nan, -1
+    best_details = np.full((len(states), 12), math.nan)
+    counts = np.zeros(len(COUNTERS), np.int64)
+    for index in range(len(candidates)):
+        lower, ax, ay = candidates[index]
+        if lower >= best:
+            counts[15] += 1  # own_bound_stop
+            break
+        counts[0] += 1
+        code, cost, details, queries = check_action(states, axes, radii, cfg,
+                za, zl, zu, origin, times, ax, ay, include_tail, best)
+        counts[5] += queries
+        if code:
+            counts[code] += 1
+            continue
+        counts[14] += 1
+        if cost < best:
+            best, best_ax, best_ay, best_index = cost, ax, ay, index
+            best_details[:] = details
+    return best, best_ax, best_ay, best_index, best_details, counts`,
+      formulas: [
+        {
+          latex: "\\text{cost}(a_x, a_y) = \\sqrt{\\text{lower}^2 + \\text{env}^2} \\ge \\text{lower}",
+          flowLabel: "BRANCH-AND-BOUND INVARIANT",
+          flowText: "sorted ascending lower -> once lower >= best -> impossible for remaining candidates to beat best",
+        },
+      ],
       highlights: [
         {
-          text: "case p.sem <- struct{}{}:",
+          text: "if lower >= best:",
           dim: "dim2",
-          tooltip: "有界信号量背压：p.sem 是容量为 maxWorkers 的无分配空结构体 Channel。一旦并发打满，Dispatch 在入槽处自然阻塞，防止上游无限拉取到期任务造成 OOM。",
+          tooltip: "Own-Bound Stop（无损分支定界早停）：环境扰动项 env^2 >= 0，故真实总代价必然 >= 主车自身代价 lower；一旦排在前面的候选刷新了更小的 best，后面所有更高 lower 的网格无需计算直接 break。",
         },
         {
-          text: "defer p.recoverPanic(taskID)",
-          dim: "dim3",
-        },
-        {
-          text: "p.scheduleRetryOrDLQ(ctx, taskID, err)",
+          text: "code, cost, details, queries = check_action(",
           dim: "dim4",
         },
         {
-          text: "execCtx, cancel := context.WithTimeout(ctx, p.taskTimeout)",
+          text: "counts[code] += 1",
           dim: "dim5",
+          tooltip: "16 维漏斗退回计数器：精确记录因碰撞、道路越界、后车响应极限、或成本超界被剪掉的候选比例。",
+        },
+        {
+          text: "@njit(cache=True)",
+          dim: "dim4",
         },
       ],
       secondaryBlockText:
-        "【并发控制设计】每当调度器从 Lua 脚本拿到一批到期 ID，会逐一塞给 WorkerPool.Dispatch。最核心的防御是先抢占空结构体信号量再起 Goroutine（而不是先起 10 万个协程再排队等锁），将内存峰值严格锁定在 `maxWorkers * 单任务栈开销` 之内；失败后通过 `min(base * 2^attempt, maxDelay) + jitter` 计算下次退避时间，超出 `max_retry` 则打入死信队列 DLQ。",
+        "【性能加速度引擎】二维机动网格 (ax, ay) 往往包含成千上万个候选组合；如果用纯 Python 对每个组合做多车时序推演 + 碰撞检测，单场景延迟会膨胀到秒级。vehicle.py 借力 Numba 编译 + 升序下界早停 + prioritize_packed_scene（按最先潜在碰撞顺位重排旁车先验顺序）把核心求解压缩进毫秒量级。",
       notes: [
         {
           label: "01 / 调用链上下文与双向锚点",
-          body: "承接 poll_due.lua 返回的任务 ID，并在收到 SIGTERM 信号时依赖内部的 p.wg 协同下一个模块完成优雅退场。",
+          body: "search() 搜出的最优动作随后若 audit=True 会交给 audit.py 用未打包的原始几何做二次核验。",
           echoTargetId: "mod-4-u-1",
-          echoLabel: "[-> 查看优雅停机如何等待这些 in-flight 协程]",
+          echoLabel: "[-> 前往 audit.py 查看关闭剪枝的独立验证]",
         },
         {
           label: "02 / 核心源码机制拆解",
-          body: "注意 `ackSuccess(ctx, taskID)` 传的是外层 `ctx` 而不是随时可能超时的 `execCtx`，避免业务逻辑刚跑完但临门一脚确认 ACK 时因为上下文过期导致白干并重复重试。",
+          body: "在同一文件下方的 linear_tail_bound() 用闭式二次极值求解 r >= remaining 区间上界 -2(A+B*r)/(k*r^2)，使前向跟驰尾部代价评估摆脱时间步长离散误差。",
         },
         {
           label: "03 / 设计取舍与替代方案",
-          body: "为什么没有采用固定常驻 Worker 协程从共用 TaskChan 消费的模式，而是按信号量动态起轻量 Goroutine？在 Go 中 Goroutine 启动成本极低（~2KB），结合信号量同样限制最大并发度，但能规避空闲常驻 Worker 长期占用堆对象或 Channel 关闭竞态的复杂度。",
+          body: "相比非线性连续 SQP 优化器容易陷入局部极小、甚至在多障碍物非凸可行域内发散，离散候选网格 + 升序分支定界天然保证在给定网格精度内找到全局最优点，且极易向量化/JIT 编译。",
         },
         {
           label: "04 / 面试官高频深挖追问",
-          body: "追问：「如果某条慢任务在 `handler.Execute` 里执行耗时超过了 `lease_timeout_ms`（比如 30s 租约，任务跑了 45s），此时发生脑裂重复执行怎么办？」",
-          calloutBox: "深度加分回答：必须引入「看门狗续约协程 (Heartbeat Lease Renewal)」——只要当前 Worker 没死且 `execCtx` 未取消，每隔 `lease/3`（10s）自动把 `inflight_zset` 中该任务的 Score 向后延长一次租约时间。",
+          body: "追问：「如果某场景最优避险需要较大横向加速度，基础候选网格超界全被拒掉了怎么处理？」",
+          calloutBox: "源码真实应对：solve() 支持 expansion_factors 多级扩张网格（若当前级可行解为 inf 且 expand_response_limits 允许），自动逐级按预设扩展网格重试并记录 expansion_level。",
         },
       ],
     },
     {
       id: "mod-4-u-1",
-      unitCode: "shutdown.go · Unit 4.1",
+      unitCode: "audit.py · Unit 4.1",
       sectionId: "sec-mod-4",
-      sectionTitle: "04. internal/worker/shutdown.go · In-Flight 任务等待与租约回收",
-      sectionTask: "外围装配与高可用边界（80/20 可选择略读，但停机流程常考）",
+      sectionTitle: "04. src/rcd_cedi/audit.py · 关闭剪枝后的纯几何终态一致性复核",
+      sectionTask: "交叉核验边界层（80/20 可选择略读，但证明零算法妥协极佳证据）",
       weight: "transition",
-      tldr: "监听 SIGINT/SIGTERM 后先停止拉取新任务，再限时等待在途 Goroutine 完成，避免半截账务中断。",
+      tldr: "独立调用原始 Vehicle 类与 swept_contact 对终态推演数组做全对无剪枝扫掠检查，兜住加速代码可能带来的微小几何漂移。",
       primaryKind: "code",
-      codeLanguage: "go",
-      filePath: "internal/worker/shutdown.go",
-      primaryText: `func (p *WorkerPool) Shutdown(graceTimeout time.Duration) error {
-	p.stopPolling()
-
-	done := make(chan struct{})
-	go func() {
-		p.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		return nil
-	case <-time.After(graceTimeout):
-		return fmt.Errorf("graceful shutdown timed out after %s; remaining tasks rely on lease reclaim", graceTimeout)
-	}
-}`,
+      codeLanguage: "python",
+      filePath: "src/rcd_cedi/audit.py",
+      primaryText: `def raw_rcd_audit(states, active, pair_only=False):
+    vehicles = [rcd_model.Vehicle(str(int(s[0])), (float(s[1]), float(s[2])),
+        (float(s[3]), float(s[4])), float(2*s[7]), float(2*s[8]),
+        math.degrees(math.atan2(s[6], s[5]))) for s in states]
+    potential, reachable, blocked = [], [], []
+    seen = set()
+    for i in range(len(states)):
+        if pair_only and i != 0: continue
+        if i != 0 and not active[i]: continue
+        for j in range(len(states)):
+            if pair_only and j != 1: continue
+            if i == j or tuple(sorted((i, j))) in seen: continue
+            seen.add(tuple(sorted((i, j))))
+            a, b = vehicles[i], vehicles[j]
+            et = rcd_model.swept_contact(a, b)
+            if et is None: continue`,
       highlights: [
         {
-          text: "p.stopPolling()",
-          dim: "dim1",
+          text: "rcd_model.swept_contact(a, b)",
+          dim: "dim5",
         },
         {
-          text: "p.wg.Wait()",
-          dim: "dim2",
-          tooltip: "优雅停机双保险：先切断上游拉取开关（停止接单），再用 WaitGroup 等待已在厨房里炒菜的协程收尾 ACK。",
-        },
-        {
-          text: "case <-time.After(graceTimeout):",
+          text: "if i == j or tuple(sorted((i, j))) in seen: continue",
           dim: "dim3",
+        },
+        {
+          text: "pair_only=False",
+          dim: "dim1",
         },
       ],
       secondaryBlockText:
-        "【高可用收尾拼图】K8s 滚动发布 Pod 时会发送 SIGTERM 并在 30 秒后强杀 SIGKILL。这段代码确保发布过程中：立刻停止从 Redis 领新活 -> 限时等待正在运行的任务安全 ACK -> 万一真卡死超时退出，也不必慌张，因为前面 Unit 2.1 的租约机制会在期满后把剩余任务安全回收重放。",
+        "【科研代码高可信防线】很多高速数值优化项目为了提速做了打包数组、先验剪枝和解析逼近，审稿人或工程师常怀疑“优化版和原版几何结果是否完全对齐”。audit.py 保留了一套不走任何快路径的纯几何复核流程，验证终态运动是否真满足物理安全边界。",
       notes: [
         {
           label: "01 / 调用链上下文与双向锚点",
-          body: "与 WorkerPool.Dispatch 共享同一个 sync.WaitGroup 实例。",
+          body: "与 vehicle.py 的 search() 共同构成「快速求解 -> 严格复核」双保险闭环。",
           echoTargetId: "mod-3-u-1",
-          echoLabel: "[<- 回看 Dispatch 中的 wg.Add 与信号量释放]",
+          echoLabel: "[<- 回看 vehicle.py 的 @njit 快速剪枝搜索]",
         },
         {
           label: "02 / 核心源码机制拆解",
-          body: "将阻塞的 `p.wg.Wait()` 包在匿名协程里再和 `time.After` 做 `select` 多路复用，是 Go 实现「带超时上限的 WaitGroup 等待」的标准惯用法。",
+          body: "advance() 先按最佳 (ax, ay) 及旁车响应推演出终态矩阵 output，再交由 raw_rcd_audit() 把数组重新还原为面向对象 Vehicle 逐对检验接触与遮挡。",
         },
         {
           label: "03 / 设计取舍与替代方案",
-          body: "放弃了强行 `cancel()` 所有正在执行的业务上下文（那样会导致外部第三方接口已经扣款成功但本地没来得及更新状态），选择等待完成 + 租约兜底。",
+          body: "通过 api 参数 `audit=True/False` 开放开关：批量大规模跑数压测时可关闭审计求极致吞吐，单用例验证与回归测试默认开启审计确保万无一失。",
         },
         {
           label: "04 / 面试官高频深挖追问",
-          body: "追问：「Kubernetes 发送 SIGTERM 时，为什么这里没有把未完成任务显式 NACK 回队列？」",
-          calloutBox: "技巧提示：若离 `graceTimeout` 还有剩余时间其实可以主动做一次批量 NACK 加速重调；但即便进程被强杀来不及 NACK，可见性租约仍是最后一道不可摧毁的安全网。",
+          body: "追问：「这套审计模块对线上批量数据推演耗时有多大影响，值得一直开着吗？」",
+          calloutBox: "工程实践：raw_rcd_audit 只针对单次搜出的最优解跑一遍 O(N^2) 静态复核（而非对几千个候选网格全部运行），因此开销远低于一次候选扫描，平时开启收益极高。",
         },
       ],
-      transitionSummary: "至此 4 个核心源码模块已串联成完整闭环：入队分片防重 -> Lua 原子摘取与租约 -> 有界并发池与退避 -> 优雅退场与租约自愈。下方直接进入面试武装模块。",
+      transitionSummary:
+        "至此已走完 JiaxinTrans/RCD_CEDI 的核心 4 模块：api.py 契约准备 -> rcd.py P2 遮挡筛选 -> vehicle.py Numba 下界剪枝 -> audit.py 独立复核。下方可直接取用面试防御话术与改造建议。",
     },
   ],
   bottomTitle: "08. 简历武装、压力测试与二开改造方案",
-  bottomSubtitle: "把看懂的开源代码转化为面试官无法反驳的工程话术与可落地 PR",
+  bottomSubtitle: "把科研与工程源码拆解沉淀为可复现的架构论述、面试问答和实际 PR 优化方向",
   bottomBlocks: [
     {
       type: "statement-banner",
-      tag: "30-SECOND ELEVATOR PITCH · 面试开场白模板",
-      body: "我在项目中重点负责高并发异步任务调度引擎的设计与压测优化。针对海量延迟任务在传统定时扫表下的数据库锁表与重复消费难题，基于 Redis 分片 ZSET 与单线程 Lua 原子脚本实现了无锁化到期任务批量摘取，结合 Visibility Timeout 隐形租约保障节点宕机后的秒级自愈，并通过 Go 有界信号量协程池与抖动指数退避隔离下游突发故障。",
+      tag: "30-SECOND ELEVATOR PITCH · 架构讲解模板",
+      body: "我深入拆解并实践了高速公路施工区多车交互风险量化框架 RCD_CEDI：针对传统成对替代安全指标忽略中间车物理遮挡与非对称约束的问题，第一阶段通过 PreparedAB 共享缓存及 I_C/S_C/ALT_C 物理筛选剔除伪冲突，第二阶段在 Numba @njit 核内使用按主车控制下界升序的分支定界早停与解析跟驰尾界求解双视角 CEDI，并配备 raw_rcd 独立几何审计验证。",
     },
     {
       type: "socratic-qa",
-      title: "L1 - L3 渐进式面试压力测试（点击展开参考防御话术）",
+      title: "L1 - L3 渐进式技术拷问（点击展开参考防御思路）",
       items: [
         {
-          question: "L1 · 基础流转：如果某时刻有 10 万条延迟任务在同一秒同时到期，你们的调度器怎么处理不会炸掉？",
+          question: "L1 · 算法直觉：如果前后同车道依次行驶 A、B、C 三辆车，RCD 是怎样避免给 A-C 误判直面冲突的？",
           answer:
-            "不会一次性全部拉进内存。两层防御：第一层在 Redis Lua 中通过 `LIMIT 0 batch_limit`（比如每次只摘 200 条）分批削峰，避免单个 Lua 脚本长时间阻塞 Redis 事件循环；第二层在 Go WorkerPool 入口使用有界信号量 `p.sem`，并发槽位满时 Dispatch 自动产生背压阻塞，把内存和下游连接池水位锁死在安全阈值内。",
+            "Stage 1 先通过 swept_contact(A, C) 计算出碰撞走廊与时间 t_AC，再由 evaluate_c_obstruction 检查中间车 B 的四个角点：只有当 B 全部落入碰撞角点对区间内 (I_C=1)、跨过冲突路径中心线 (S_C=1)、且自身横向撤离时间 ALT_B >= t_AC 时，才标记 B 构成了物理阻挡，把 A-C 冲突排除在可达冲突集之外。",
         },
         {
-          question: "L2 · 极端故障：一个任务正常逻辑要跑 45 秒，但租约只设了 30 秒，30 秒一到岂不是被别的 Worker 重复捞走造成双发？",
+          question: "L2 · 数值与极限：当旁车与目标车保持平行同向行驶（相对横向速度 w ≈ 0）时，ALT = distance / abs(w) 岂不是除零异常？",
           answer:
-            "这是一个经典的「长尾任务租约过早过期」盲区。工业级解决方案有两种并存手段：首先为长任务启用 Watchdog 看门狗协程，每隔租约的 1/3（10s）自动在 Lua 里刷新 `inflight_zset` 的 Score 续期；其次利用 Task 元数据里的唯一 Fencing Token（单调递增的 attempt 版本号），哪怕极端情况下真发生双发，下游更新数据库时校验 `attempt == expected_attempt` 也能拦截过期幽灵写请求。",
+            "源码在 rcd.py 专门针对 abs(w) <= EPS 做了显式零速补全（zero_clearing_speed_case，包含相对静止、平行同向、平行反向三种情形），此时令 clearing distance = inf 并在通过 I_C/S_C 筛选后直接判定为持续占用阻挡（blocks=True），既防止除零报错又守住了物理严谨性。",
         },
         {
-          question: "L3 · 架构对比：市面上已经有 Kafka / RabbitMQ，为什么还要用 Redis ZSET 自研这套调度系统？核心短板在哪？",
+          question: "L3 · 架构与优化：vehicle.py 为什么宁愿把动作空间离散成网格交给 @njit 扫描，而不用连续梯度优化器直接求 (ax, ay)？",
           answer:
-            "Kafka 是流式日志架构，原生只擅长按 Offset 顺序吞吐，做「任意毫秒精度延迟投递（如 17 分钟后取消订单）」极度笨重；Redis ZSET 天然支持 O(log N) 任意时间点排序。它的核心短板在于受限于单机内存容量与 AOF 持久化弱一致性（主从异步复制切换可能丢最近几十毫秒刚入队的任务）——因此适合可接受秒级/亚秒级调度、对延迟精度敏感的中高吞吐场景，而不适合不能丢一笔钱的强一致清结算账务主链路。",
+            "受限于多旁车耦合响应、施工区多边形边界与跟驰安全阈值，CEDI 的可行域往往是非凸甚至分段的，梯度法容易卡死在局部劣解或穿过不可行带。通过预排序的离散网格配合分支定界下界早停 own_bound_stop（lower >= best 立刻中断）及解析尾界 linear_tail_bound，不仅 100% 保证网内全局最优，还能在 Numba nogil 内实现毫秒级吞吐。",
         },
       ],
     },
     {
       type: "star-bullets",
-      title: "简历 STAR 法则高含金量话术（双版本可直接复制）",
+      title: "简历与科研工程项目陈述参考话术（双版本可直接取用）",
       versions: [
         {
-          versionLabel: "版本 A · 稳健后端落地版（重点突出可靠性与无锁设计）",
-          summary: "适用于中大厂常规后端/Go开发岗位，聚焦高并发下的数据一致性与故障自愈。",
+          versionLabel: "版本 A · 科研算法工程化视角（突出几何建模与数值稳健性）",
+          summary: "适用于自动驾驶规划、交通仿真与算法工程岗位面试。",
           bullets: [
-            "主导重构异步延迟任务调度引擎，用 Redis 分片 ZSET + Lua 原子脚本替代传统分布式锁轮询，消除多实例竞态重复消费并降低 60% Redis RTT 开销。",
-            "设计基于 Visibility Timeout 隐形租约队列的故障自愈与有界信号量协程池，配合抖动指数退避与死信队列（DLQ），确保节点 OOM 重启时任务零永久丢失。",
+            "剖析并应用两阶段施工区风险量化框架 RCD_CEDI，利用 PreparedAB 缓存复用与 I_C/S_C/ALT_C 几何裁剪过滤多车遮挡下的不可达伪冲突，消除传统成对指标的风险失真。",
+            "结合 Numba @njit 升序分支定界剪枝（own_bound_stop）与闭式解析尾界（linear_tail_bound）求解双视角 CEDI，并借助无剪枝 raw_rcd_audit 完成终态几何零偏差复核。",
           ],
         },
         {
-          versionLabel: "版本 B · 性能深挖攻坚版（突出可量化的改造与集群分片）",
-          summary: "适用于核心架构/高并发中间件岗位，建议完成下方 Ownership 改造后再使用。",
+          versionLabel: "版本 B · 高性能计算与重构视角（适合阐述工程调优能力）",
+          summary: "适用于注重 Numba / JIT 性能、内存分配与测试回归能力的研发岗。",
           bullets: [
-            "针对百万级延迟任务堆积造成的 Redis 热 Key 阻塞问题，引入 CRC32 一致性分片桶与 `{hash_tag}` 集群路由改造，使调度器可在 Redis Cluster 下线性水平扩展。",
-            "引入批量 Pipeline + Watchdog 租约自动续期防脑裂机制，压测验证单节点调度吞吐提升 3.4 倍，P99 触发延迟控制在 120ms 以内。",
+            "定位 CEDI 候选搜索热循环中的细节瓶颈，针对提前剪枝路径优化工作缓冲分配与旁车碰撞优先检测排序（prioritize_packed_scene），显著降低无效候选评估耗时。",
+            "配合 tests/fixtures/source_regression.json 回归基线实现优化前后数值完全对齐验证，保障科学计算引擎加速而不牺牲边界物理精度。",
           ],
         },
       ],
     },
     {
       type: "ownership-blueprints",
-      title: "2小时可落地的 Ownership 二次开发改造计划（把开源项目变成你的代表作）",
+      title: "2小时可落地的 Ownership 二次开发改造建议（向开源仓库提 PR 实战）",
       plans: [
         {
-          title: "改造蓝图 01：为 Lua 剧本加上 Redis Cluster `{hashTag}` 多键同槽支持",
+          title: "改造蓝图 01：消除 check_action 提前剪枝路径的 details 数组预分配",
           timeEstimate: "预计耗时：1.5 小时",
-          targetFiles: "internal/scheduler/enqueue.go & internal/store/poll_due.lua",
+          targetFiles: "src/rcd_cedi/cedi/vehicle.py",
           changeSteps:
-            "1) 将分片桶名从 `delay:bucket:1` 改为 `{bucket:1}:delay`、`{bucket:1}:inflight`、`{bucket:1}:meta:taskId`；2) 在 Lua 中校验跨 Key 访问全落在同槽；3) 用 Docker Compose 起 3 主 3 从 Redis Cluster 跑通并发摘取单测。",
-          benchmarkMetric: "验证跨节点集群部署无 CROSSSLOT 报错，8 分片水平扩容后写入 QPS 线性增长。",
+            "1) 将 check_action 内部早于标量下界与道路约束的 `np.full((n, 12), math.nan)` 延后，或改为由 search() 传入预分配 scratch buffer；2) 使用 tests/fixtures/source_regression.json 对比全量输出一致性。",
+          benchmarkMetric: "在高 reject 比例的密集施工区场景下明显削减堆内存分配与 GC 抖动。",
           interviewPitch:
-            "面试时主动讲：「开源原版只支持单机 Redis，我为了支撑我们业务的集群环境，亲自改造了 Hash Tag 路由和 Lua 同槽约束...」",
+            "面试讲性能优化细节时拿出实测 profiling 前后对照：哪怕在 Numba @njit 里，消除热循环每轮一次小矩阵分配也能大幅压降尾延迟。",
         },
         {
-          title: "改造蓝图 02：实现长任务 Watchdog 看门狗租约自动续期",
+          title: "改造蓝图 02：为 api.py 批量场景评估增加并行 Batch Executor 支持",
           timeEstimate: "预计耗时：2 小时",
-          targetFiles: "internal/worker/pool.go & internal/store/renew_lease.lua",
+          targetFiles: "src/rcd_cedi/api.py & csv_tools/vehicle.py",
           changeSteps:
-            "1) 在 `pool.go` 启动业务执行前另起一个子协程监听 `time.NewTicker(leaseTimeout / 3)`；2) 通过 Lua 校验任务仍在 `inflight_zset` 且 `attempt` 匹配后刷新过期时间；3) 构造一个 `time.Sleep(45s)` 的慢任务集成测试证明不会触发重复投递。",
-          benchmarkMetric: "消除 30s+ 长尾任务 100% 重复调度误杀率。",
+            "1) 借助 search() 自身标注的 nogil=True 特性，用 ThreadPoolExecutor 并行评估大批次轨迹帧；2) 验证不同线程间 PreparedAB 只读共享零竞态。",
+          benchmarkMetric: "在多核 CPU 上跑千帧连续轨迹分析时获得接近核数线性的吞吐提升。",
           interviewPitch:
-            "面试官问长任务超时怎么防脑裂时，直接亮出自己手写的 Watchdog 续约和 Fencing Token 校验机制。",
+            "展示你真正看懂了为什么源码特意写 `@njit(cache=True, nogil=True)`，并将 nogil 真正落到批处理并发加速。",
         },
         {
-          title: "改造蓝图 03：用单条 Lua 闭合 SetNX + HSet + ZAdd 解决入队半残窗口",
+          title: "改造蓝图 03：补全多旁车同时阻挡时的临界优先级诊断字段",
           timeEstimate: "预计耗时：1 小时",
-          targetFiles: "internal/scheduler/enqueue.go & internal/store/enqueue_idem.lua",
+          targetFiles: "src/rcd_cedi/rcd.py & src/rcd_cedi/models.py",
           changeSteps:
-            "1) 合并 Unit 1.1 中两步独立请求为单次 Lua 调用；2) 用 `k6` 或 `go test -bench` 对比合并前后的 RTT 延迟分布。",
-          benchmarkMetric: "入队 P99 网络耗时减半（由 2 次 RTT 降至 1 次 RTT），彻底消除异常重试误报重复窗口。",
+            "1) 在 diagnostics['surrounding'] 中额外输出每辆阻挡车的余裕时间 (t_ab - ALT_C)；2) 按险情裕度排序暴露最关键阻塞车 ID。",
+          benchmarkMetric: "无需重算即可在上层可视化轨迹中直接标出最棘手的遮挡车。",
           interviewPitch:
-            "展示你具备 Code Review 级隐患洞察力：不是照抄开源代码，而是看出了原库入队两步写的边界漏洞并亲手修补。",
+            "体现接口可观测性设计敏感度：不只输出冷冰冰的 True/False，还给出定量的净空裕度排序。",
         },
       ],
     },
@@ -607,26 +603,18 @@ return due_ids`,
       type: "before-after-diff",
       title: "可交互式代码改造对比区与压测记录（自动持久保存至本地）",
       description:
-        "下方已预置「入队两步写漏洞 -> 单 Lua 原子闭合」的改造模板。你可以直接修改代码片段并记录自己的 Benchmark 数据，导出 Markdown/HTML 时会自动打包。",
-      defaultBeforeCode: `// BEFORE: 两步写存在网络断开后幂等键残留的竞态窗口（且耗费 2 次 RTT）
-ok, err := s.rdb.SetNX(ctx, idemKey, task.ID, 24*time.Hour).Result()
-if !ok { return "", ErrDuplicateTask }
-
-pipe := s.rdb.TxPipeline()
-pipe.HSet(ctx, metaKey, ...)
-pipe.ZAdd(ctx, bucketKey, ...)
-_, err = pipe.Exec(ctx)`,
-      defaultAfterCode: `// AFTER: 单条 EVALSHA Lua 脚本闭合防重入 + 元数据写入 + 延迟投递（1 次 RTT 零半残态）
-// KEYS: [idemKey, metaKey, bucketKey]
-local inserted = redis.call("SET", KEYS[1], ARGV[1], "EX", ARGV[2], "NX")
-if not inserted then
-    return 0 -- ErrDuplicateTask
-end
-redis.call("HSET", KEYS[2], "payload", ARGV[3], "state", "SCHEDULED", "attempt", 0)
-redis.call("ZADD", KEYS[3], ARGV[4], ARGV[1])
-return 1`,
+        "下方已预置「消除 vehicle.py 热路径提前分配详情矩阵」的优化草稿，你可以直接编辑并记录实测数据。",
+      defaultBeforeCode: `# BEFORE (src/rcd_cedi/cedi/vehicle.py): 提前分配 details 数组，随后才因下界剪枝退出
+details = np.full((len(states), 12), math.nan)
+lower = math.hypot(ax / (cfg[5] if ax > 0. else cfg[6]), ay / cfg[7])
+if lower >= upper_bound:
+    return 13, math.inf, details, 0`,
+      defaultAfterCode: `# AFTER: 先执行 O(1) 标量剪枝，仅当候选进入多车模拟时才复用 scratch details 缓冲
+lower = math.hypot(ax / (cfg[5] if ax > 0. else cfg[6]), ay / cfg[7])
+if lower >= upper_bound:
+    return 13, math.inf, 0  # 零数组分配直接返回；仅 code == 0 时写入 best_details`,
       defaultBenchmarkNote:
-        "环境：MacBook Pro M2 / 本地 Docker Redis 7.2，并发度 64：\n- BEFORE（2 RTT）：平均耗时 1.84 ms，P99 4.90 ms，并发模拟断网残留率 0.4%\n- AFTER（1 RTT Lua）：平均耗时 0.96 ms，P99 2.35 ms，异常中断半残率 0%",
+        "对比基线（tests/fixtures/source_regression.json）：\n- BEFORE：密集候选集中 ~62% 被 code=13 成本剪枝直接退回，仍触发 details 临时分配\n- AFTER：跳过无效候选数组分配并保持 CEDI 与 best_ax/best_ay 输出完全一致",
     },
   ],
 };

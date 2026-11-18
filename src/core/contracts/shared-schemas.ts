@@ -94,12 +94,16 @@ export const TopModelBaseSchema = z.object({
       .nullish()
       .transform((v) => v ?? undefined),
     oneSentenceSkeleton: optString,
-    cards: z.array(
-      z.object({
-        tag: z.string(),
-        body: z.string(),
-      })
-    ),
+    cards: z
+      .array(
+        z.object({
+          tag: z.string().catch("核心维度"),
+          body: z.string().catch(""),
+        })
+      )
+      .nullish()
+      .transform((v) => v ?? [])
+      .catch([]),
     comparisonPair: z
       .object({
         leftTitle: z.string(),
@@ -113,13 +117,15 @@ export const TopModelBaseSchema = z.object({
       .transform((v) => v ?? undefined),
     diagram: DiagramGraphSchema,
     glossaryTitle: z.string(),
-    glossary: z.array(
-      z.object({
-        term: z.string(),
-        badge: optString,
-        definition: z.string(),
-      })
-    ),
+    glossary: z
+      .array(
+        z.object({
+          term: z.string(),
+          badge: optString,
+          definition: z.string(),
+        })
+      )
+      .catch([]),
     pretestItems: z
       .array(
         z.object({
@@ -179,7 +185,7 @@ export const TopModelBaseSchema = z.object({
       .nullish()
       .transform((v) => v ?? undefined),
   }),
-  sections: z.array(SectionAnchorSchema),
+  sections: z.array(SectionAnchorSchema).catch([]),
 });
 
 export const AnnotatedUnitBaseSchema = z.object({
@@ -189,14 +195,16 @@ export const AnnotatedUnitBaseSchema = z.object({
   secondaryBlockText: z.string(),
   tensorOrStateFlow: optString,
   highlights: z.array(HighlightSpanSchema).catch([]),
-  notes: z.array(
-    z.object({
-      body: z.string(),
-      echoTargetId: optString,
-      echoLabel: optString,
-      calloutBox: optString,
-    })
-  ),
+  notes: z
+    .array(
+      z.object({
+        body: z.string(),
+        echoTargetId: optString,
+        echoLabel: optString,
+        calloutBox: optString,
+      })
+    )
+    .catch([]),
   transitionSummary: optString,
   predictPrompt: optString,
   selfExplainPrompt: z

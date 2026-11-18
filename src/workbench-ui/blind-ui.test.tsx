@@ -65,7 +65,7 @@ describe("Strict Blind UI Components", () => {
       />
     );
     expect(repoDom.querySelector("pre")).not.toBeNull();
-    expect(repoDom.textContent).toContain("enqueue.go");
+    expect(repoDom.textContent).toContain("api.py");
   });
 
   it("renders BottomArsenalRenderer across all mode block types cleanly", () => {

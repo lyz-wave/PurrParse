@@ -1,6 +1,6 @@
 import type { FigureBlock } from "@/core/contracts/document-ast";
 import type { RawSourcePayload, SourceUnit } from "@/core/contracts/mode-plugin";
-import { fetchCleanWebPage } from "@/core/engine/web-fetchers";
+import { extractUrlFromShareText, fetchCleanWebPage } from "@/core/engine/web-fetchers";
 
 const FIGURE_MARKER_RE = /\[\[PRISM_FIGURE:([A-Za-z0-9+/=]+)\]\]/g;
 
@@ -253,8 +253,16 @@ export function aggregateThoughtClusters(rawText: string): SourceUnit[] {
 }
 
 export async function ingestCognitiveEssay(payload: RawSourcePayload): Promise<SourceUnit[]> {
-  if (payload.kind === "remote-url") {
-    const page = await fetchCleanWebPage(payload.content);
+  const trimmed = payload.content.trim();
+  const maybeLink =
+    payload.kind === "remote-url"
+      ? { url: trimmed }
+      : payload.kind === "text" && trimmed.length <= 420
+        ? extractUrlFromShareText(trimmed)
+        : null;
+
+  if (maybeLink) {
+    const page = await fetchCleanWebPage(trimmed);
     if (page.title && !payload.title) {
       payload.title = page.title;
     }

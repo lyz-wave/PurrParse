@@ -5,18 +5,36 @@ import { exportDocumentToAnkiCsv } from "@/exporters/anki-exporter";
 import { exportDocumentToMarkdown } from "@/exporters/markdown-exporter";
 import { compileDocumentToStandaloneHtml } from "@/exporters/html-compiler";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import {
+  ProximitySidebar,
+  type ProximitySection,
+} from "@/components/ui/proximity-sidebar";
+import { RailToc } from "@/components/ui/rail-toc";
 import { BackJumpFloater } from "./BackJumpFloater";
 import { BottomArsenalRenderer } from "./BottomArsenalRenderer";
+import { isMacDesktopRuntime } from "./desktop-runtime";
 import { DualColumnRow } from "./DualColumnRow";
 import { GlobalTooltip } from "./GlobalTooltip";
 import { HeaderConsole } from "./HeaderConsole";
 import { IngestionStudioModal } from "./IngestionStudioModal";
-import { LibraryDrawer } from "./LibraryDrawer";
+import { LibraryDrawer, type LibraryOriginRect } from "./LibraryDrawer";
+import { OnboardingTour } from "./OnboardingTour";
 import { SectionSummaryCard } from "./SectionSummaryCard";
 import { SelectionQaModal, type SelectionQaOpenPayload } from "./SelectionQaModal";
-import { SettingsModal } from "./SettingsModal";
+import { SettingsModal, type SettingsSectionKey } from "./SettingsModal";
 import { SubNavBar } from "./SubNavBar";
 import { TopMentalPanel } from "./TopMentalPanel";
+import { WorkspaceHome } from "./WorkspaceHome";
+
+interface SelectionPillState {
+  unitId: string;
+  unitCode: string;
+  selectedText: string;
+  x: number;
+  y: number;
+  anchorX: number;
+  anchorY: number;
+}
 
 function triggerFileDownload(filename: string, content: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
@@ -52,12 +70,20 @@ export function WorkbenchShell() {
     hideSecondary,
     hideNotes,
     autoHideHeader,
+    themeMode,
+    viewMode,
+    startOnHome,
+    readingDepthMode,
+    pureLangMode,
     flashUnitId,
+    onboardingOpen,
     hydrateFromStorage,
+    openOnboarding,
+    completeOnboarding,
     setActiveDocument,
+    openDocumentForReview,
     upsertDocument,
     deleteDocument,
-    resetDemos,
     autoOrganizeLibrary,
     updateDocumentLibraryMeta,
     setLlmConfig,
@@ -82,20 +108,149 @@ export function WorkbenchShell() {
     toggleHideSecondary,
     toggleHideNotes,
     toggleAutoHideHeader,
+    setThemeMode,
+    setViewMode,
+    toggleStartOnHome,
+    setReadingDepthMode,
+    setPureLangMode,
     jumpToUnit,
     showTooltip,
     hideTooltip,
   } = useWorkbenchStore();
 
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryOriginRect, setLibraryOriginRect] = useState<LibraryOriginRect | null>(null);
   const [studioOpen, setStudioOpen] = useState(false);
+
+  const openLibraryFrom = (originEl?: HTMLElement | null) => {
+    if (originEl && typeof originEl.getBoundingClientRect === "function") {
+      const rect = originEl.getBoundingClientRect();
+      setLibraryOriginRect({
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      });
+    } else {
+      setLibraryOriginRect(null);
+    }
+    setLibraryOpen(true);
+  };
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsFocusSection, setSettingsFocusSection] = useState<SettingsSectionKey | null>(null);
+  const [pureTocOpen, setPureTocOpen] = useState(false);
   const [blurredSectionId, setBlurredSectionId] = useState<string | null>(null);
   const [selectionQaPayload, setSelectionQaPayload] = useState<SelectionQaOpenPayload | null>(null);
+  const [selectionPill, setSelectionPill] = useState<SelectionPillState | null>(null);
+  const [selectionCopied, setSelectionCopied] = useState(false);
+  const [isMacDesktop, setIsMacDesktop] = useState(false);
+
+  const isPureMode = readingDepthMode === "pure";
+  const isReviewMode = readingDepthMode === "review";
+
+  useEffect(() => {
+    setIsMacDesktop(isMacDesktopRuntime());
+  }, []);
+
+  useEffect(() => {
+    if (libraryOpen || studioOpen || settingsOpen || onboardingOpen || selectionQaPayload) {
+      setSelectionPill(null);
+    }
+  }, [libraryOpen, studioOpen, settingsOpen, onboardingOpen, selectionQaPayload]);
+
+  useEffect(() => {
+    if (!selectionPill) return;
+    const hidePill = () => setSelectionPill(null);
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-testid="selection-ask-pill"]')) return;
+      hidePill();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") hidePill();
+    };
+    window.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("scroll", hidePill, { passive: true });
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("scroll", hidePill);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [selectionPill]);
+
+  const handleMainMouseUp = (e: React.MouseEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    if (libraryOpen || studioOpen || settingsOpen || onboardingOpen || selectionQaPayload) return;
+
+    const targetEl = e.target as HTMLElement | null;
+    if (targetEl?.closest('[data-testid="selection-ask-pill"], input, textarea, button, [role="dialog"]')) {
+      return;
+    }
+
+    const sel = typeof window !== "undefined" ? window.getSelection() : null;
+    if (!sel || sel.isCollapsed) {
+      setSelectionPill(null);
+      return;
+    }
+
+    const rawText = sel.toString().trim();
+    if (rawText.length < 2) {
+      setSelectionPill(null);
+      return;
+    }
+
+    const anchorNode = sel.anchorNode;
+    const anchorEl =
+      anchorNode?.nodeType === 3 ? anchorNode.parentElement : (anchorNode as HTMLElement | null);
+    if (!anchorEl || anchorEl.closest("textarea, input, [role='dialog']")) {
+      return;
+    }
+
+    const articleEl = anchorEl.closest("article[id]");
+    const unitId = articleEl?.getAttribute("id");
+    const matchedUnit = unitId ? activeDoc.units.find((u) => u.id === unitId) : undefined;
+    if (!matchedUnit) return;
+
+    const range = sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+    const rect = range?.getBoundingClientRect();
+    const viewW = typeof window !== "undefined" ? window.innerWidth : 1280;
+    const centerX = rect && rect.width > 0 ? rect.left + rect.width / 2 : e.clientX;
+    const clampedX = Math.min(Math.max(88, centerX), Math.max(88, viewW - 88));
+    const topY =
+      rect && (rect.height > 0 || rect.top > 0)
+        ? rect.top > 72
+          ? rect.top - 46
+          : rect.bottom + 8
+        : Math.max(60, e.clientY - 46);
+
+    setSelectionCopied(false);
+    setSelectionPill({
+      unitId: matchedUnit.id,
+      unitCode: matchedUnit.unitCode,
+      selectedText: rawText.slice(0, 1200),
+      x: clampedX,
+      y: topY,
+      anchorX: rect?.left ?? e.clientX,
+      anchorY: rect?.top ?? e.clientY,
+    });
+  };
 
   useEffect(() => {
     void hydrateFromStorage();
   }, [hydrateFromStorage]);
+
+  useEffect(() => {
+    if (!isPureMode) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !libraryOpen && !studioOpen && !settingsOpen && !onboardingOpen && !selectionQaPayload) {
+        setPureTocOpen(false);
+        setReadingDepthMode("workbench");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isPureMode, libraryOpen, studioOpen, settingsOpen, onboardingOpen, selectionQaPayload, setReadingDepthMode]);
 
   const activeDoc = useMemo(
     () => documents.find((d) => d.id === activeDocumentId) ?? documents[0],
@@ -124,9 +279,12 @@ export function WorkbenchShell() {
       if (firstPassMode && !unit.firstPassRecommended && !recommendedIds.has(unit.id) && unit.weight !== "core") {
         continue;
       }
-      if (fuzzyOnlyMode) {
+      if (fuzzyOnlyMode || isReviewMode) {
         const status = activeAnnotations?.unitUnderstanding?.[unit.id];
-        if (status !== "fuzzy" && status !== "confused") continue;
+        const hasQaThreads = (activeAnnotations?.unitQaThreads?.[unit.id]?.length ?? 0) > 0;
+        if (status !== "fuzzy" && status !== "confused" && !(isReviewMode && hasQaThreads)) {
+          continue;
+        }
       }
       let group = groups.find((g) => g.sectionId === unit.sectionId);
       if (!group) {
@@ -143,7 +301,55 @@ export function WorkbenchShell() {
       group.units.push(unit);
     }
     return groups;
-  }, [activeDoc, paretoMode, firstPassMode, fuzzyOnlyMode, activeAnnotations?.unitUnderstanding]);
+  }, [
+    activeDoc,
+    paretoMode,
+    firstPassMode,
+    fuzzyOnlyMode,
+    isReviewMode,
+    activeAnnotations?.unitUnderstanding,
+    activeAnnotations?.unitQaThreads,
+  ]);
+
+  const proximitySections = useMemo<ProximitySection[]>(() => {
+    const items: ProximitySection[] = isPureMode
+      ? [{ id: "pure-doc-header", label: activeDoc.title, kind: "title" }]
+      : [
+          {
+            id: "mental-model",
+            label: `00 · ${activeDoc.labels.mentalNavLabel.replace(/^\[|\]$/g, "")}`,
+            kind: "title",
+          },
+        ];
+
+    const totalUnits = groupedSections.reduce((sum, g) => sum + g.units.length, 0);
+    const compactBodies = totalUnits > 26;
+
+    for (const group of groupedSections) {
+      items.push({
+        id: group.sectionId,
+        label: group.title,
+        kind: "subtitle",
+      });
+      for (const unit of group.units) {
+        if (compactBodies && unit.weight !== "core") continue;
+        items.push({
+          id: unit.id,
+          label: `${unit.unitCode} · ${unit.tldr}`,
+          kind: "body",
+        });
+      }
+    }
+
+    if (!isPureMode) {
+      items.push({
+        id: "bottom-arsenal",
+        label: activeDoc.labels.bottomNavLabel.replace(/^\[|\]$/g, ""),
+        kind: "title",
+      });
+    }
+    return items;
+  }, [activeDoc, groupedSections, isPureMode]);
 
   const handleExportMarkdown = () => {
     const md = exportDocumentToMarkdown(activeDoc, activeAnnotations);
@@ -161,54 +367,190 @@ export function WorkbenchShell() {
   };
 
   return (
-    <div className="min-h-screen bg-[#faf8f5] text-[#1c222d]">
-      <HeaderConsole
-        doc={activeDoc}
-        activeDimFilter={activeDimFilter}
-        paretoMode={paretoMode}
-        firstPassMode={firstPassMode}
-        fuzzyOnlyMode={fuzzyOnlyMode}
-        fuzzyOrConfusedCount={fuzzyOrConfusedCount}
-        autoHideHeader={autoHideHeader}
-        hideSecondary={hideSecondary}
-        hideNotes={hideNotes}
-        onToggleDim={toggleDimFilter}
-        onTogglePareto={toggleParetoMode}
-        onToggleFirstPass={toggleFirstPassMode}
-        onToggleFuzzyOnly={toggleFuzzyOnlyMode}
-        onOpenLibrary={() => setLibraryOpen(true)}
-        onOpenStudio={() => setStudioOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
-
-      <SubNavBar doc={activeDoc} />
-
-      <main className="max-w-[1460px] mx-auto px-4 sm:px-6 py-6 pb-20">
-        <TopMentalPanel
-          model={activeDoc.topMentalModel}
-          pretestAnswers={activeAnnotations?.pretestAnswers}
-          onPretestChange={(itemId, patch) => setPretestAnswer(activeDoc.id, itemId, patch)}
-          onJumpToUnit={(targetId) => jumpToUnit(targetId)}
-          onToggleFirstPass={toggleFirstPassMode}
+    <div data-theme={themeMode} className="prism-shell min-h-screen">
+      {viewMode === "home" ? (
+        <WorkspaceHome
+          documents={documents}
+          activeDocumentId={activeDoc.id}
+          annotationsByDoc={annotationsByDocId}
+          llmConfig={llmConfig}
+          themeMode={themeMode}
+          startOnHome={startOnHome}
+          onThemeChange={setThemeMode}
+          onToggleStartOnHome={toggleStartOnHome}
+          onOpenDocument={(docId) => setActiveDocument(docId)}
+          onOpenReview={(docId) => openDocumentForReview(docId)}
+          onOpenLibrary={(originEl) => openLibraryFrom(originEl)}
+          onOpenStudio={() => setStudioOpen(true)}
+          onOpenSettings={() => {
+            setSettingsFocusSection(null);
+            setSettingsOpen(true);
+          }}
+          onOpenApiSettings={() => {
+            setSettingsFocusSection("llm");
+            setSettingsOpen(true);
+          }}
+          onOpenOnboarding={openOnboarding}
+          onDocumentReady={(doc) => upsertDocument(doc)}
         />
+      ) : (
+        <>
+          {isPureMode && isMacDesktop && (
+            <div
+              aria-hidden="true"
+              className="sticky top-0 z-30 h-9 w-full electron-drag bg-transparent"
+            />
+          )}
+          {!isPureMode && (
+            <>
+              <HeaderConsole
+                doc={activeDoc}
+                activeDimFilter={activeDimFilter}
+                paretoMode={paretoMode}
+                firstPassMode={firstPassMode}
+                fuzzyOnlyMode={fuzzyOnlyMode}
+                fuzzyOrConfusedCount={fuzzyOrConfusedCount}
+                autoHideHeader={autoHideHeader}
+                hideSecondary={hideSecondary}
+                hideNotes={hideNotes}
+                themeMode={themeMode}
+                readingDepthMode={readingDepthMode}
+                onThemeChange={setThemeMode}
+                onReadingDepthChange={setReadingDepthMode}
+                onToggleDim={toggleDimFilter}
+                onTogglePareto={toggleParetoMode}
+                onToggleFirstPass={toggleFirstPassMode}
+                onToggleFuzzyOnly={toggleFuzzyOnlyMode}
+                onOpenHome={() => {
+                  setSelectionPill(null);
+                  setSelectionQaPayload(null);
+                  setViewMode("home");
+                }}
+                onOpenLibrary={(originEl) => openLibraryFrom(originEl)}
+                onOpenStudio={() => setStudioOpen(true)}
+                onOpenSettings={() => {
+                  setSettingsFocusSection(null);
+                  setSettingsOpen(true);
+                }}
+              />
+
+              <SubNavBar doc={activeDoc} />
+            </>
+          )}
+
+      <main
+        onMouseUp={handleMainMouseUp}
+        className={
+          isPureMode
+            ? "max-w-[760px] mx-auto px-5 sm:px-8 pt-10 pb-28"
+            : "max-w-[1460px] mx-auto px-4 sm:px-6 xl:pr-14 py-6 pb-20"
+        }
+      >
+        {isPureMode ? (
+          <header id="pure-doc-header" className="mb-8 pb-6 border-b border-[#ddd6c7]/70">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <span className="font-mono text-[11px] uppercase tracking-wider text-slate-500">
+                {`${activeDoc.modeName} · 通读纯净模式 (${activeDoc.units.length} 节)`}
+              </span>
+              <div className="flex items-center gap-2">
+                <div
+                  data-testid="pure-lang-switcher"
+                  role="group"
+                  aria-label="通读中英文稿切换"
+                  className="inline-flex items-center rounded-full border border-[#ddd6c7] bg-[#fcfaf6] p-0.5"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setPureLangMode("original")}
+                    className={`font-mono text-[10.5px] px-2.5 py-0.5 rounded-full cursor-pointer transition-colors ${
+                      pureLangMode === "original"
+                        ? "prism-on-dark bg-[#1a2744] text-white font-semibold"
+                        : "text-slate-600 hover:text-[#1a2744]"
+                    }`}
+                  >
+                    英文/原稿
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPureLangMode("chinese")}
+                    className={`font-mono text-[10.5px] px-2.5 py-0.5 rounded-full cursor-pointer transition-colors ${
+                      pureLangMode === "chinese"
+                        ? "prism-on-dark bg-[#1a2744] text-white font-semibold"
+                        : "text-slate-600 hover:text-[#1a2744]"
+                    }`}
+                  >
+                    中文稿
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReadingDepthMode("workbench")}
+                  className="font-mono text-[11px] px-2.5 py-0.5 rounded-full border border-[#ddd6c7] text-slate-600 hover:text-[#1a2744] cursor-pointer transition-colors"
+                >
+                  切换精读工作台
+                </button>
+              </div>
+            </div>
+            <h1 className="font-serif text-2xl sm:text-3xl font-semibold tracking-tight leading-snug text-[#1a2744]">
+              {activeDoc.title}
+            </h1>
+            {activeDoc.subtitle && (
+              <p className="text-sm text-slate-600 mt-2 leading-relaxed">{activeDoc.subtitle}</p>
+            )}
+          </header>
+        ) : (
+          <TopMentalPanel
+            model={activeDoc.topMentalModel}
+            pretestAnswers={activeAnnotations?.pretestAnswers}
+            onPretestChange={(itemId, patch) => setPretestAnswer(activeDoc.id, itemId, patch)}
+            onJumpToUnit={(targetId) => jumpToUnit(targetId)}
+            onToggleFirstPass={toggleFirstPassMode}
+          />
+        )}
 
         {groupedSections.length === 0 ? (
-          <div className="bg-white border border-[#ddd6c7] rounded-xl p-8 text-center text-sm text-slate-600">
-            当前筛选条件（80/20 核心聚焦 / 第一遍路径 / 只看模糊与不懂）未匹配到对应单元，请点击顶部对应开关恢复全部视图。
+          <div className="prism-editorial-card border border-[#ddd6c7] rounded-2xl p-8 text-center text-sm text-slate-600 space-y-3">
+            <p>
+              {isReviewMode
+                ? "当前文档暂无标记为「模糊 / 不懂」或发起过 AI 追问的单元。"
+                : "当前筛选条件（80/20 核心聚焦 / 第一遍路径 / 只看模糊与不懂）未匹配到对应单元，请点击顶部对应开关恢复全部视图。"}
+            </p>
+            {isReviewMode && (
+              <button
+                type="button"
+                onClick={() => setReadingDepthMode("workbench")}
+                className="prism-on-dark font-mono text-xs px-4 py-1.5 rounded-full bg-[#1a2744] text-white cursor-pointer"
+              >
+                返回精读模式
+              </button>
+            )}
           </div>
         ) : (
           groupedSections.map((group) => {
             const sectionBlurred = blurredSectionId === group.sectionId;
             return (
-              <div key={group.sectionId} id={group.sectionId} className="mb-6 scroll-mt-28">
-                <div className="my-4 px-4 py-2.5 border-l-4 border-[#1a2744] bg-[#efeae0] rounded-r-lg flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="font-serif text-base sm:text-lg font-semibold text-[#1a2744]">
-                    {group.title}
-                  </h2>
-                  {group.taskBadge && (
-                    <span className="font-mono text-xs text-slate-600">{group.taskBadge}</span>
-                  )}
-                </div>
+              <div key={group.sectionId} id={group.sectionId} className="mb-8 scroll-mt-28">
+                {isPureMode ? (
+                  <div className="mt-10 mb-4 pb-2 border-b border-[#ddd6c7]/60 flex items-baseline justify-between gap-2">
+                    <h2 className="font-serif text-lg sm:text-xl font-semibold text-[#1a2744]">
+                      {group.title}
+                    </h2>
+                    {group.taskBadge && (
+                      <span className="font-mono text-[11px] text-slate-500">{group.taskBadge}</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="prism-section-banner my-4 px-4 py-3 rounded-r-xl flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="font-serif text-base sm:text-lg font-semibold text-[#1a2744]">
+                      {group.title}
+                    </h2>
+                    {group.taskBadge && (
+                      <span className="font-mono text-xs px-2.5 py-0.5 rounded-full bg-white/60 text-slate-600">
+                        {group.taskBadge}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {group.units.map((unit) => (
                   <DualColumnRow
@@ -220,6 +562,8 @@ export function WorkbenchShell() {
                     activeDimFilter={activeDimFilter}
                     hideSecondary={hideSecondary}
                     hideNotes={hideNotes}
+                    pureMode={isPureMode}
+                    pureLang={pureLangMode}
                     isFlashed={flashUnitId === unit.id}
                     isBlurred={sectionBlurred}
                     understandingStatus={activeAnnotations?.unitUnderstanding?.[unit.id] ?? "unmarked"}
@@ -243,43 +587,138 @@ export function WorkbenchShell() {
                   />
                 ))}
 
-                <SectionSummaryCard
-                  sectionId={group.sectionId}
-                  sectionTitle={group.title}
-                  summary={group.summary}
-                  recallState={activeAnnotations?.sectionRecallAnswers?.[group.sectionId]}
-                  isRecallBlurActive={sectionBlurred}
-                  onToggleRecallBlur={() =>
-                    setBlurredSectionId((prev) =>
-                      prev === group.sectionId ? null : group.sectionId
-                    )
-                  }
-                  onRecallTextChange={(text) =>
-                    setSectionRecall(activeDoc.id, group.sectionId, { text })
-                  }
-                  onSubmitRecall={() => {
-                    setSectionRecall(activeDoc.id, group.sectionId, { submitted: true });
-                    setBlurredSectionId(null);
-                  }}
-                />
+                {!isPureMode && (
+                  <SectionSummaryCard
+                    sectionId={group.sectionId}
+                    sectionTitle={group.title}
+                    summary={group.summary}
+                    recallState={activeAnnotations?.sectionRecallAnswers?.[group.sectionId]}
+                    isRecallBlurActive={sectionBlurred}
+                    onToggleRecallBlur={() =>
+                      setBlurredSectionId((prev) =>
+                        prev === group.sectionId ? null : group.sectionId
+                      )
+                    }
+                    onRecallTextChange={(text) =>
+                      setSectionRecall(activeDoc.id, group.sectionId, { text })
+                    }
+                    onSubmitRecall={() => {
+                      setSectionRecall(activeDoc.id, group.sectionId, { submitted: true });
+                      setBlurredSectionId(null);
+                    }}
+                  />
+                )}
               </div>
             );
           })
         )}
 
-        <BottomArsenalRenderer
-          title={activeDoc.bottomTitle}
-          subtitle={activeDoc.bottomSubtitle}
-          blocks={activeDoc.bottomBlocks}
-          pretestItems={activeDoc.topMentalModel.pretestItems}
-          annotations={activeAnnotations}
-          onJournalChange={(promptId, val) => setJournalAnswer(activeDoc.id, promptId, val)}
-          onChecklistToggle={(itemId) => toggleChecklistItem(activeDoc.id, itemId)}
-          onDiffChange={(patch) => setBeforeAfterDiff(activeDoc.id, patch)}
-          onSocraticChange={(itemId, patch) => setSocraticAnswer(activeDoc.id, itemId, patch)}
-          onFeynmanChange={(text) => setFeynmanEssay(activeDoc.id, text)}
-        />
+        {!isPureMode && (
+          <BottomArsenalRenderer
+            title={activeDoc.bottomTitle}
+            subtitle={activeDoc.bottomSubtitle}
+            blocks={activeDoc.bottomBlocks}
+            pretestItems={activeDoc.topMentalModel.pretestItems}
+            annotations={activeAnnotations}
+            onJournalChange={(promptId, val) => setJournalAnswer(activeDoc.id, promptId, val)}
+            onChecklistToggle={(itemId) => toggleChecklistItem(activeDoc.id, itemId)}
+            onDiffChange={(patch) => setBeforeAfterDiff(activeDoc.id, patch)}
+            onSocraticChange={(itemId, patch) => setSocraticAnswer(activeDoc.id, itemId, patch)}
+            onFeynmanChange={(text) => setFeynmanEssay(activeDoc.id, text)}
+          />
+        )}
       </main>
+
+      <aside
+        aria-label="文章侧边进度指示"
+        className={`fixed top-1/2 -translate-y-1/2 right-1.5 z-30 pointer-events-none ${
+          isPureMode ? "hidden lg:flex" : "hidden xl:flex"
+        }`}
+      >
+        <ProximitySidebar
+          sections={proximitySections}
+          side="right"
+          activeOffset={0.32}
+          scrollOffsetPx={isPureMode ? 48 : 84}
+        />
+      </aside>
+
+      {isPureMode && (
+        <div
+          data-testid="pure-mode-dock"
+          className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2"
+        >
+          {pureTocOpen && (
+            <div
+              className="w-72 max-h-[58vh] overflow-y-auto rounded-2xl border shadow-2xl p-3.5"
+              style={{
+                background: "var(--prism-surface, #fcf9f2)",
+                borderColor: "var(--prism-border, #ddd6c7)",
+              }}
+            >
+              <RailToc
+                title="快速跳章"
+                offset={64}
+                items={[
+                  { id: "__top__", label: "回到顶部", depth: 0 },
+                  ...groupedSections.map((group) => ({
+                    id: group.sectionId,
+                    label: group.title,
+                    depth: 1,
+                    badge: group.taskBadge || undefined,
+                  })),
+                ]}
+                onItemSelect={() => {
+                  window.setTimeout(() => setPureTocOpen(false), 380);
+                }}
+              />
+            </div>
+          )}
+
+          <div className="prism-glass-bar text-white rounded-full px-2 py-1.5 shadow-xl flex items-center gap-1.5 border border-white/15">
+            <button
+              type="button"
+              onClick={() => setPureLangMode(pureLangMode === "original" ? "chinese" : "original")}
+              className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 cursor-pointer transition-colors"
+              title="切换英文/原稿与中文稿"
+            >
+              {pureLangMode === "original" ? "原稿" : "中文"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPureTocOpen((prev) => !prev)}
+              className="text-[11px] font-medium px-2.5 py-1 rounded-full hover:bg-white/15 cursor-pointer transition-colors"
+            >
+              目录
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setThemeMode(
+                  themeMode === "paper" ? "aurora" : themeMode === "aurora" ? "studio" : "paper"
+                )
+              }
+              className="text-[11px] font-medium px-2.5 py-1 rounded-full hover:bg-white/15 cursor-pointer transition-colors"
+              title="切换阅读主题"
+            >
+              {themeMode === "paper" ? "稿纸" : themeMode === "aurora" ? "夜空" : "纯白"}
+            </button>
+            <span className="h-3.5 w-px bg-white/20" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => {
+                setPureTocOpen(false);
+                setReadingDepthMode("workbench");
+              }}
+              className="text-[11px] font-semibold px-3 py-1 rounded-full bg-amber-300 text-[#1a2744] hover:bg-amber-200 cursor-pointer transition-colors"
+            >
+              退出纯净 (Esc)
+            </button>
+          </div>
+        </div>
+      )}
+        </>
+      )}
 
       <GlobalTooltip />
       <BackJumpFloater />
@@ -290,17 +729,36 @@ export function WorkbenchShell() {
         activeDocumentId={activeDoc.id}
         annotationsByDocId={annotationsByDocId}
         llmConfig={llmConfig}
+        themeMode={themeMode}
+        originRect={libraryOriginRect}
         onClose={() => setLibraryOpen(false)}
         onSelect={setActiveDocument}
         onDelete={deleteDocument}
-        onResetDemos={resetDemos}
         onAutoOrganize={autoOrganizeLibrary}
         onUpdateDocMeta={updateDocumentLibraryMeta}
+      />
+
+      <OnboardingTour
+        open={onboardingOpen}
+        documents={documents}
+        activeDocumentId={activeDoc.id}
+        paretoMode={paretoMode}
+        themeMode={themeMode}
+        onSelectDocument={setActiveDocument}
+        onTogglePareto={toggleParetoMode}
+        onThemeChange={setThemeMode}
+        onOpenSettingsForApi={() => {
+          setSettingsFocusSection("llm");
+          setSettingsOpen(true);
+        }}
+        onOpenStudio={() => setStudioOpen(true)}
+        onComplete={completeOnboarding}
       />
 
       <IngestionStudioModal
         open={studioOpen}
         llmConfig={llmConfig}
+        themeMode={themeMode}
         onClose={() => setStudioOpen(false)}
         onCreated={(doc) => upsertDocument(doc)}
       />
@@ -312,6 +770,11 @@ export function WorkbenchShell() {
         hideSecondary={hideSecondary}
         hideNotes={hideNotes}
         autoHideHeader={autoHideHeader}
+        themeMode={themeMode}
+        startOnHome={startOnHome}
+        initialFocusSection={settingsFocusSection}
+        onThemeChange={setThemeMode}
+        onToggleStartOnHome={toggleStartOnHome}
         onToggleSecondary={toggleHideSecondary}
         onToggleNotes={toggleHideNotes}
         onToggleAutoHideHeader={toggleAutoHideHeader}
@@ -319,8 +782,61 @@ export function WorkbenchShell() {
         onExportAnkiCsv={handleExportAnkiCsv}
         onExportHtml={handleExportHtml}
         onSave={setLlmConfig}
-        onClose={() => setSettingsOpen(false)}
+        onOpenOnboarding={() => {
+          setSettingsOpen(false);
+          setSettingsFocusSection(null);
+          openOnboarding();
+        }}
+        onClose={() => {
+          setSettingsOpen(false);
+          setSettingsFocusSection(null);
+        }}
       />
+
+      {selectionPill && !selectionQaPayload && (
+        <div
+          data-testid="selection-ask-pill"
+          style={{ left: `${selectionPill.x}px`, top: `${selectionPill.y}px` }}
+          onMouseDown={(e) => e.preventDefault()}
+          className="prism-on-dark fixed -translate-x-1/2 z-40 inline-flex items-center gap-0.5 rounded-full bg-[#0f172a] text-white px-1.5 py-1 shadow-2xl border border-white/15"
+        >
+          <button
+            type="button"
+            data-testid="selection-ask-ai-btn"
+            onClick={() => {
+              setSelectionQaPayload({
+                unitId: selectionPill.unitId,
+                unitCode: selectionPill.unitCode,
+                selectedText: selectionPill.selectedText,
+                x: selectionPill.anchorX,
+                y: selectionPill.anchorY,
+              });
+              setSelectionPill(null);
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-amber-300 hover:bg-amber-200 text-[#0f172a] cursor-pointer transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+            </svg>
+            <span>问 AI</span>
+          </button>
+          <button
+            type="button"
+            data-testid="selection-copy-btn"
+            onClick={() => {
+              void navigator.clipboard?.writeText(selectionPill.selectedText);
+              setSelectionCopied(true);
+              setTimeout(() => {
+                setSelectionCopied(false);
+                setSelectionPill(null);
+              }, 700);
+            }}
+            className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full text-slate-200 hover:text-white hover:bg-white/12 cursor-pointer transition-colors"
+          >
+            <span>{selectionCopied ? "已复制" : "复制"}</span>
+          </button>
+        </div>
+      )}
 
       <SelectionQaModal
         open={Boolean(selectionQaPayload)}
@@ -344,6 +860,7 @@ export function WorkbenchShell() {
             : null
         }
         llmConfig={llmConfig}
+        themeMode={themeMode}
         onSaveThread={(thread) => {
           addUnitQaThread(activeDoc.id, thread.unitId, thread);
           setSelectionQaPayload((prev) =>

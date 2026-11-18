@@ -22,9 +22,9 @@ const ibmMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Prism Workbench | 学术精读 · 认知内化 · 源码架构拆解",
+  title: "PurrParse | 学术精读 · 视频转写 · 源码架构拆解",
   description:
-    "高内聚低耦合、可插拔多模态精读与架构拆解工作台：支持学术论文逐句精读、认知长文思维模型拆解与开源项目面试压力测试。",
+    "PurrParse 桌面端与工作台：支持 arXiv PDF 学术论文逐句精读、音视频转写思维拆解与 GitHub 开源仓库架构解析。",
 };
 
 export default function RootLayout({

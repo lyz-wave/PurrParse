@@ -11,6 +11,8 @@ import type {
   WorkbenchDocument,
   WorkbenchUnit,
 } from "@/core/contracts/document-ast";
+import type { PureLangMode } from "@/store/workbench-store";
+import { StreamingResponse } from "@/components/ui/streaming-response";
 import { CodeViewer } from "./code-viewer";
 import { DisplayFormula, MathText } from "./math-text";
 
@@ -86,6 +88,8 @@ interface DualColumnRowProps {
   activeDimFilter: HighlightDimensionKey | null;
   hideSecondary: boolean;
   hideNotes: boolean;
+  pureMode?: boolean;
+  pureLang?: PureLangMode;
   isFlashed: boolean;
   isBlurred?: boolean;
   understandingStatus?: UnderstandingStatus;
@@ -130,6 +134,8 @@ export function DualColumnRow({
   activeDimFilter,
   hideSecondary,
   hideNotes,
+  pureMode = false,
+  pureLang = "original",
   isFlashed,
   isBlurred = false,
   understandingStatus = "unmarked",
@@ -191,20 +197,27 @@ export function DualColumnRow({
     return map;
   }, [dimensions]);
 
+  const showNotes = !hideNotes && !pureMode;
+  const showSecondary = !hideSecondary && !pureMode;
+  const useChinesePure =
+    pureMode && pureLang === "chinese" && Boolean(unit.secondaryBlockText?.trim());
+  const activePureText = useChinesePure ? unit.secondaryBlockText : unit.primaryText;
+
   const proseSegments = useMemo(
     () =>
-      unit.primaryKind === "prose"
-        ? splitProseByHighlights(unit.primaryText, unit.highlights, qaThreads)
+      unit.primaryKind === "prose" || useChinesePure
+        ? splitProseByHighlights(activePureText, pureMode ? [] : unit.highlights, qaThreads)
         : [],
-    [unit.primaryKind, unit.primaryText, unit.highlights, qaThreads]
+    [unit.primaryKind, useChinesePure, activePureText, unit.highlights, qaThreads, pureMode]
   );
 
-  const gridStyle: React.CSSProperties | undefined = hideNotes
+  const gridStyle: React.CSSProperties | undefined = !showNotes
     ? undefined
     : { gridTemplateColumns: `minmax(0, ${layoutRatio[0]}fr) minmax(0, ${layoutRatio[1]}fr)` };
 
-  const borderWeightClass =
-    unit.weight === "core"
+  const borderWeightClass = pureMode
+    ? ""
+    : unit.weight === "core"
       ? "border-l-4 border-l-[#1a2744]"
       : unit.weight === "support"
         ? "border-l-4 border-l-amber-500/80"
@@ -217,49 +230,69 @@ export function DualColumnRow({
       data-qa-count={qaCount}
       onContextMenu={handleContextMenu}
       style={gridStyle}
-      className={`relative scroll-mt-28 rounded-xl p-5 mb-4 grid grid-cols-1 lg:grid-cols-1 gap-5 transition-all ${borderWeightClass} ${
-        isFlashed
-          ? "bg-white border-2 border-blue-600 ring-2 ring-blue-500/40"
-          : hasQa
-            ? "bg-[#fffdf8] border-2 border-dashed border-[#1a2744]/80"
-            : "bg-white border border-[#ddd6c7]"
-      } ${hideNotes ? "" : "lg:grid"} ${isBlurred ? "blur-xs select-none pointer-events-none opacity-65" : ""}`}
+      className={`group relative scroll-mt-28 transition-all ${
+        pureMode
+          ? `rounded-xl px-3 sm:px-5 py-3.5 mb-2 border ${
+              isFlashed
+                ? "border-2 border-blue-600 ring-2 ring-blue-500/30"
+                : hasQa
+                  ? "border-dashed border-[#1a2744]/60"
+                  : "border-transparent hover:border-[#e5dfd2]/70"
+            }`
+          : `prism-editorial-card rounded-2xl p-5 sm:p-6 mb-5 grid grid-cols-1 lg:grid-cols-1 gap-6 ${borderWeightClass} ${
+              isFlashed
+                ? "border-2 border-blue-600 ring-2 ring-blue-500/40"
+                : hasQa
+                  ? "border-2 border-dashed border-[#1a2744]/80"
+                  : "border border-[#ddd6c7]"
+            } ${showNotes ? "lg:grid" : ""}`
+      } ${isBlurred ? "blur-xs select-none pointer-events-none opacity-65" : ""}`}
     >
       {hasQa && (
         <button
           type="button"
           data-testid={`qa-corner-badge-${unit.id}`}
           onClick={() => setQaDrawerOpen((prev) => !prev)}
-          className="absolute -top-3 right-4 z-10 font-mono text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-[#1a2744] text-amber-200 border border-[#ddd6c7] shadow-xs cursor-pointer hover:bg-[#24365c] transition-colors"
+          className="prism-on-dark absolute -top-3 right-5 z-10 font-mono text-[11px] font-semibold px-3 py-0.5 rounded-full bg-[#1a2744] text-amber-200 border border-[#ddd6c7] shadow-sm cursor-pointer hover:bg-[#24365c] transition-colors"
           title="点击展开或收起本段 AI 追问与证据记录"
         >
-          [已追问 {qaCount} 次]
+          {`[已追问 ${qaCount} 次]`}
         </button>
       )}
       {/* Left Column: Primary Evidence (Prose or Code) + Formulas + Secondary Translation */}
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div
+          className={`flex flex-wrap items-center justify-between gap-2 ${
+            pureMode
+              ? "mb-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150"
+              : "mb-3.5"
+          }`}
+        >
           <div className="flex flex-wrap items-center gap-2 min-w-0">
             <span className="font-mono text-xs font-semibold text-[#1a2744]">{unit.unitCode}</span>
-            <span
-              className={`font-mono text-[10px] px-2 py-0.5 rounded uppercase ${
-                unit.weight === "core"
-                  ? "bg-[#1a2744] text-white font-semibold"
-                  : unit.weight === "transition"
-                    ? "bg-slate-200 text-slate-700"
-                    : "bg-amber-100 text-amber-900"
-              }`}
-            >
-              {unit.weight === "core" ? "CORE 20%" : unit.weight}
-            </span>
-            {unit.firstPassRecommended && (
-              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200">
+            {!pureMode && (
+              <span
+                className={`font-mono text-[10px] px-2.5 py-0.5 rounded-full uppercase ${
+                  unit.weight === "core"
+                    ? "prism-on-dark bg-[#1a2744] text-white font-semibold"
+                    : unit.weight === "transition"
+                      ? "bg-slate-200/80 text-slate-700"
+                      : "bg-amber-100 text-amber-900"
+                }`}
+              >
+                {unit.weight === "core" ? "CORE 20%" : unit.weight}
+              </span>
+            )}
+            {!pureMode && unit.firstPassRecommended && (
+              <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200">
                 PASS 1
               </span>
             )}
-            <span className="text-xs sm:text-sm text-slate-600 font-medium">
-              <MathText text={unit.tldr} />
-            </span>
+            {!pureMode && (
+              <span className="text-xs sm:text-sm text-slate-600 font-medium">
+                <MathText text={unit.tldr} />
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1 shrink-0" aria-label="理解度自评">
@@ -279,10 +312,13 @@ export function DualColumnRow({
                     y: e.clientY,
                   });
                 }}
-                className="font-mono text-[10px] px-2 py-0.5 rounded border border-dashed border-[#1a2744]/60 bg-amber-50/70 text-[#1a2744] hover:bg-amber-100 cursor-pointer transition-colors mr-1"
-                title="划词后右键或点击此处向 AI 提问"
+                className="inline-flex items-center gap-1 font-mono text-[10.5px] font-medium px-2.5 py-0.5 rounded-full border border-[#1a2744]/35 bg-amber-50/70 text-[#1a2744] hover:bg-amber-100 cursor-pointer transition-colors mr-1"
+                title="左键划选正文或点击此处向 AI 提问"
               >
-                [+ AI 追问]
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span>AI 追问</span>
               </button>
             )}
             {UNDERSTANDING_OPTIONS.map((opt) => {
@@ -292,7 +328,7 @@ export function DualColumnRow({
                   key={opt.key}
                   type="button"
                   onClick={() => onUnderstandingChange?.(opt.key)}
-                  className={`font-mono text-[10px] px-1.5 py-0.5 rounded border cursor-pointer transition-colors ${
+                  className={`font-mono text-[10px] px-2 py-0.5 rounded-full border cursor-pointer transition-colors ${
                     active
                       ? opt.activeCls
                       : "bg-[#fcfbf8] text-slate-500 border-[#ddd6c7] hover:border-slate-400"
@@ -305,19 +341,23 @@ export function DualColumnRow({
           </div>
         </div>
 
-        {unit.primaryKind === "code" ? (
+        {unit.primaryKind === "code" && !useChinesePure ? (
           <CodeViewer
             code={unit.primaryText}
             language={unit.codeLanguage}
             filePath={unit.filePath}
-            highlights={unit.highlights}
+            highlights={pureMode ? [] : unit.highlights}
             dimensions={dimensions}
             activeDimFilter={activeDimFilter}
             onHoverTooltip={onHoverTooltip}
             onLeaveTooltip={onLeaveTooltip}
           />
         ) : (
-          <div className="font-serif text-[16px] leading-[1.78] text-[#1c222d] whitespace-pre-wrap">
+          <div
+            className={`font-serif text-[#1c222d] whitespace-pre-wrap ${
+              pureMode ? "text-[17.5px] leading-[1.9]" : "text-[16px] leading-[1.78]"
+            }`}
+          >
             {proseSegments.map((seg, idx) => {
               if (seg.qaThreadId) {
                 const matchedThread = qaThreads.find((t) => t.id === seg.qaThreadId);
@@ -475,14 +515,14 @@ export function DualColumnRow({
           </div>
         )}
 
-        {!hideSecondary && unit.secondaryBlockText && (
-          <div className="mt-3.5 bg-[#f0ece2] border-l-[3px] border-[#8c7a6b] rounded-r-md px-3.5 py-2.5 text-sm leading-relaxed text-[#292524]">
+        {showSecondary && unit.secondaryBlockText && (
+          <div className="prism-quote-block mt-4 rounded-r-xl px-4 py-3 text-sm leading-relaxed italic font-serif">
             <MathText text={unit.secondaryBlockText} />
           </div>
         )}
 
-        {unit.transitionSummary && (
-          <div className="mt-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded px-3 py-2">
+        {!pureMode && unit.transitionSummary && (
+          <div className="mt-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
             <span className="font-mono font-semibold text-[#1a2744] mr-1.5">
               {labels.transitionPrefix}
             </span>
@@ -492,12 +532,12 @@ export function DualColumnRow({
       </div>
 
       {/* Right Column: Prediction Gate / Compact Transition / Analysis Modules + Self-Explain + Personal Note */}
-      {!hideNotes && (
-        <div className="min-w-0 lg:border-l border-t lg:border-t-0 border-[#ddd6c7] lg:pl-5 pt-4 lg:pt-0 flex flex-col gap-3">
+      {showNotes && (
+        <div className="min-w-0 lg:border-l border-t lg:border-t-0 border-[#ddd6c7] lg:pl-6 pt-4 lg:pt-0 flex flex-col gap-3.5">
           {isCoreGated ? (
-            <div className="bg-[#fcfaf6] border border-[#ddd6c7] rounded-lg p-3.5 space-y-2.5">
-              <div className="font-mono text-[11px] font-semibold text-[#1a2744]">
-                [核心段先猜后看 · 主动预测]
+            <div className="bg-[#fcfaf6] border border-[#ddd6c7] rounded-xl p-4 space-y-2.5">
+              <div className="inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-[#1a2744]/10 text-[#1a2744]">
+                核心段先猜后看 · 主动预测
               </div>
               <p className="text-xs sm:text-sm text-slate-800 leading-relaxed">
                 <MathText text={unit.predictPrompt!} />
@@ -510,7 +550,7 @@ export function DualColumnRow({
                 }}
                 rows={2}
                 placeholder="先写下你的判断或直觉推测（1-2句话），再核对右侧完整批注..."
-                className="w-full rounded border border-[#ddd6c7] bg-white px-2.5 py-1.5 text-xs text-slate-800"
+                className="w-full rounded-lg border border-[#ddd6c7] bg-white px-3 py-2 text-xs text-slate-800"
               />
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -519,9 +559,9 @@ export function DualColumnRow({
                     setLocalUnlocked(true);
                     onUnlockNotes?.();
                   }}
-                  className="font-mono text-xs px-3 py-1 rounded bg-[#1a2744] hover:bg-[#24365c] text-white cursor-pointer"
+                  className="prism-on-dark font-mono text-xs px-3.5 py-1.5 rounded-full bg-[#1a2744] hover:bg-[#24365c] text-white font-medium cursor-pointer transition-colors"
                 >
-                  [提交思考并展开批注]
+                  提交思考并展开批注
                 </button>
                 <button
                   type="button"
@@ -529,58 +569,72 @@ export function DualColumnRow({
                     setLocalUnlocked(true);
                     onUnlockNotes?.();
                   }}
-                  className="font-mono text-[11px] px-2.5 py-1 rounded border border-[#ddd6c7] bg-white hover:bg-slate-100 text-slate-600 cursor-pointer"
+                  className="font-mono text-[11px] px-3 py-1.5 rounded-full border border-[#ddd6c7] bg-white hover:bg-slate-100 text-slate-600 cursor-pointer transition-colors"
                 >
-                  [展开批注]
+                  直接展开批注
                 </button>
               </div>
             </div>
           ) : unit.weight === "transition" && unit.transitionSummary ? (
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 leading-relaxed">
-              <span className="font-mono font-semibold text-[#1a2744] mr-1.5">[TRANSITION]</span>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-700 leading-relaxed">
+              <span className="font-mono font-semibold text-[#1a2744] mr-1.5 px-2 py-0.5 rounded-full bg-white border border-slate-200">
+                TRANSITION
+              </span>
               <MathText text={unit.transitionSummary} />
             </div>
           ) : (
-            unit.notes.map((note, idx) => (
-              <div key={idx} className="pb-2.5 border-b border-dashed border-[#e5dfd2] last:border-b-0">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                  <span className="font-mono text-[11.5px] font-semibold text-[#1a2744]">
-                    {note.label}
-                  </span>
-                  {note.echoTargetId && (
-                    <button
-                      type="button"
-                      onClick={() => onJumpToUnit(note.echoTargetId!, unit.id)}
-                      className="font-mono text-[11px] px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 cursor-pointer"
-                    >
-                      {note.echoLabel ?? "[-> 跳转关联锚点]"}
-                    </button>
+            unit.notes.map((note, idx) => {
+              const splitMatch = note.label.match(/^(\d{2})\s*\/\s*(.+)$/);
+              const badgeNum = splitMatch?.[1];
+              const cleanLabel = splitMatch?.[2] ?? note.label;
+              return (
+                <div key={idx} className="pb-3 border-b border-dashed border-[#e5dfd2] last:border-b-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {badgeNum && (
+                        <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#1a2744]/10 text-[#1a2744] shrink-0">
+                          {badgeNum}
+                        </span>
+                      )}
+                      <span className="font-mono text-[11.5px] font-semibold text-[#1a2744] truncate">
+                        {cleanLabel}
+                      </span>
+                    </div>
+                    {note.echoTargetId && (
+                      <button
+                        type="button"
+                        onClick={() => onJumpToUnit(note.echoTargetId!, unit.id)}
+                        className="font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 cursor-pointer transition-colors"
+                      >
+                        {note.echoLabel ?? "跳转关联锚点"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="text-[13.5px] leading-relaxed text-slate-700">
+                    <MathText text={note.body} />
+                  </div>
+                  {note.calloutBox && (
+                    <div className="mt-2.5 bg-amber-50/90 border-l-3 border-amber-600 px-3 py-2 text-xs text-amber-950 rounded-r-lg">
+                      <MathText text={note.calloutBox} />
+                    </div>
                   )}
                 </div>
-                <div className="text-[13.5px] leading-relaxed text-slate-700">
-                  <MathText text={note.body} />
-                </div>
-                {note.calloutBox && (
-                  <div className="mt-2 bg-amber-50/90 border-l-3 border-amber-600 px-3 py-2 text-xs text-amber-950 rounded-r">
-                    <MathText text={note.calloutBox} />
-                  </div>
-                )}
-              </div>
-            ))
+              );
+            })
           )}
 
           {!isCoreGated && unit.weight !== "transition" && unit.misconceptionCallout && (
-            <div className="bg-rose-50/85 border-l-3 border-rose-500 px-3 py-2 text-xs text-rose-950 rounded-r">
+            <div className="bg-rose-50/85 border-l-3 border-rose-500 px-3 py-2 text-xs text-rose-950 rounded-r-lg">
               <span className="font-mono font-semibold mr-1.5">[易误解]</span>
               <MathText text={unit.misconceptionCallout.replace(/^\s*\[易误解\]\s*:?\s*/, "")} />
             </div>
           )}
 
           {!isCoreGated && unit.weight !== "transition" && unit.selfExplainPrompt && (
-            <details className="bg-[#fcfaf6] border border-[#ddd6c7] rounded-lg px-3 py-2 text-xs">
+            <details className="bg-[#fcfaf6] border border-[#ddd6c7] rounded-xl px-3.5 py-2.5 text-xs">
               <summary className="cursor-pointer font-medium text-[#1a2744]">
-                <span className="font-mono text-[10.5px] font-semibold text-blue-800 mr-1.5">
-                  [为什么 · 自我解释追问]
+                <span className="font-mono text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 mr-2">
+                  为什么 · 自我解释
                 </span>
                 <MathText text={unit.selfExplainPrompt.question} />
               </summary>
@@ -597,7 +651,7 @@ export function DualColumnRow({
                 onClick={() => setNoteOpen(true)}
                 className="font-mono text-xs text-slate-600 hover:text-[#1a2744] underline cursor-pointer"
               >
-                {labels.userNoteButton}
+                {labels.userNoteButton.replace(/^\[|\]$/g, "")}
               </button>
             ) : (
               <div>
@@ -610,7 +664,7 @@ export function DualColumnRow({
                     onClick={() => setNoteOpen(false)}
                     className="font-mono text-[11px] text-slate-500 hover:text-slate-800 cursor-pointer"
                   >
-                    [收起]
+                    收起
                   </button>
                 </div>
                 <textarea
@@ -618,7 +672,7 @@ export function DualColumnRow({
                   onChange={(e) => onUserNoteChange(e.target.value)}
                   placeholder={labels.userNotePlaceholder}
                   rows={3}
-                  className="w-full rounded-md border border-[#ddd6c7] bg-[#fcfbf8] px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1a2744]/30"
+                  className="w-full rounded-lg border border-[#ddd6c7] bg-[#fcfbf8] px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1a2744]/30"
                 />
               </div>
             )}
@@ -657,7 +711,7 @@ export function DualColumnRow({
                       <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-[#1a2744] text-amber-200">
                         [{thread.scope === "document" ? "全文跨节证据" : "本段上下文精讲"}]
                       </span>
-                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-amber-100 text-[#1a2744]">
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-950">
                         [追问 {turnCount} 次]
                       </span>
                       <span className="font-mono text-[11px] text-slate-600 truncate max-w-md">
@@ -678,7 +732,7 @@ export function DualColumnRow({
                               activeThreadId: thread.id,
                             })
                           }
-                          className="font-mono text-[11px] font-semibold px-2.5 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-[#1a2744] border border-[#1a2744]/40 cursor-pointer"
+                          className="font-mono text-[11px] font-semibold px-2.5 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-950 border border-[#1a2744]/40 cursor-pointer"
                         >
                           [+ 继续追问]
                         </button>
@@ -695,11 +749,16 @@ export function DualColumnRow({
                     </div>
                   </div>
 
-                  <div className="text-xs font-semibold text-[#1a2744]">
+                  <div className="text-xs font-semibold text-[var(--prism-heading)]">
                     Q1: {thread.question}
                   </div>
-                  <div className="text-[13px] leading-relaxed whitespace-pre-wrap text-[#22201d] bg-[#faf7f0] rounded p-3 border border-[#ede6d8]">
-                    <MathText text={thread.answer} />
+                  <div className="text-[13px] leading-relaxed text-[var(--prism-ink)] bg-[var(--prism-surface-subtle)] rounded p-3 border border-[var(--prism-border)]">
+                    <StreamingResponse
+                      text={thread.answer}
+                      status="done"
+                      actions={false}
+                      className="text-[13px] leading-relaxed"
+                    />
                   </div>
 
                   {thread.evidences.length > 0 && (
@@ -707,7 +766,7 @@ export function DualColumnRow({
                       {thread.evidences.map((ev, eIdx) => (
                         <div
                           key={`${thread.id}-ev-${eIdx}`}
-                          className="text-xs bg-[#fcfbf8] border border-dashed border-[#c7bea9] rounded p-2 flex flex-col gap-1"
+                          className="text-xs bg-[var(--prism-surface)] border border-dashed border-[var(--prism-border-strong)] rounded p-2 flex flex-col gap-1"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-mono text-[10px] font-bold text-[#1a2744]">
@@ -723,7 +782,7 @@ export function DualColumnRow({
                               </button>
                             )}
                           </div>
-                          <div className="text-[11px] text-[#565047] italic">
+                          <div className="text-[11px] text-[var(--prism-ink-muted)] italic">
                             <MathText text={ev.quote} />
                           </div>
                         </div>
@@ -734,20 +793,25 @@ export function DualColumnRow({
                   {(thread.followUps ?? []).map((turn, tIdx) => (
                     <div
                       key={turn.id}
-                      className="border-t border-dashed border-[#d8d0bf] pt-2.5 space-y-1.5"
+                      className="border-t border-dashed border-[var(--prism-border-strong)] pt-2.5 space-y-1.5"
                     >
-                      <div className="text-xs font-semibold text-[#1a2744]">
+                      <div className="text-xs font-semibold text-[var(--prism-heading)]">
                         Q{tIdx + 2}: {turn.question}
                       </div>
-                      <div className="text-[13px] leading-relaxed whitespace-pre-wrap text-[#22201d] bg-[#faf7f0] rounded p-2.5 border border-[#ede6d8]">
-                        <MathText text={turn.answer} />
+                      <div className="text-[13px] leading-relaxed text-[var(--prism-ink)] bg-[var(--prism-surface-subtle)] rounded p-2.5 border border-[var(--prism-border)]">
+                        <StreamingResponse
+                          text={turn.answer}
+                          status="done"
+                          actions={false}
+                          className="text-[13px] leading-relaxed"
+                        />
                       </div>
                       {turn.evidences.length > 0 && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           {turn.evidences.map((ev, eIdx) => (
                             <div
                               key={`${turn.id}-ev-${eIdx}`}
-                              className="text-xs bg-[#fcfbf8] border border-dashed border-[#c7bea9] rounded p-2 flex flex-col gap-1"
+                              className="text-xs bg-[var(--prism-surface)] border border-dashed border-[var(--prism-border-strong)] rounded p-2 flex flex-col gap-1"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <span className="font-mono text-[10px] font-bold text-[#1a2744]">
@@ -763,7 +827,7 @@ export function DualColumnRow({
                                   </button>
                                 )}
                               </div>
-                              <div className="text-[11px] text-[#565047] italic">
+                              <div className="text-[11px] text-[var(--prism-ink-muted)] italic">
                                 <MathText text={ev.quote} />
                               </div>
                             </div>

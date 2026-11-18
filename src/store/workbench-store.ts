@@ -14,11 +14,21 @@ import { inferDocumentTaxonomy } from "@/core/engine/library-organizer";
 import type { LLMConfig } from "@/core/engine/llm-adapters";
 import { DEMO_DOCUMENTS } from "@/plugins";
 
+export type WorkbenchThemeMode = "paper" | "aurora" | "studio";
+export type ReadingDepthMode = "pure" | "workbench" | "review";
+export type PureLangMode = "original" | "chinese";
+export type WorkbenchViewMode = "home" | "reader";
+
 const STORAGE_KEYS = {
   DOCUMENTS: "prism_workbench_docs_v1",
   ANNOTATIONS: "prism_workbench_annotations_v1",
   ACTIVE_DOC_ID: "prism_workbench_active_doc_v1",
   LLM_CONFIG: "prism_workbench_llm_config_v1",
+  THEME: "prism_workbench_theme_v1",
+  READING_DEPTH: "prism_workbench_reading_depth_v1",
+  PURE_LANG: "prism_workbench_pure_lang_v1",
+  ONBOARDING_DONE: "purrparse_onboarding_done_v1",
+  START_ON_HOME: "purrparse_start_on_home_v1",
 } as const;
 
 const EMPTY_ANNOTATIONS: UserAnnotationsState = {
@@ -83,12 +93,24 @@ export interface WorkbenchStoreState {
   hideSecondary: boolean;
   hideNotes: boolean;
   autoHideHeader: boolean;
+  themeMode: WorkbenchThemeMode;
+  readingDepthMode: ReadingDepthMode;
+  pureLangMode: PureLangMode;
+  viewMode: WorkbenchViewMode;
+  startOnHome: boolean;
   backJumpOriginId: string | null;
   flashUnitId: string | null;
   tooltip: TooltipState;
+  onboardingOpen: boolean;
+  onboardingCompleted: boolean;
 
   // Actions
   hydrateFromStorage: () => Promise<void>;
+  setViewMode: (mode: WorkbenchViewMode) => void;
+  toggleStartOnHome: () => void;
+  openDocumentForReview: (docId: string) => void;
+  openOnboarding: () => void;
+  completeOnboarding: () => void;
   setActiveDocument: (id: string) => void;
   upsertDocument: (doc: WorkbenchDocument) => void;
   deleteDocument: (id: string) => void;
@@ -141,6 +163,9 @@ export interface WorkbenchStoreState {
   toggleHideSecondary: () => void;
   toggleHideNotes: () => void;
   toggleAutoHideHeader: () => void;
+  setThemeMode: (theme: WorkbenchThemeMode) => void;
+  setReadingDepthMode: (mode: ReadingDepthMode) => void;
+  setPureLangMode: (lang: PureLangMode) => void;
 
   jumpToUnit: (targetUnitId: string, originUnitId?: string) => void;
   returnToOrigin: () => void;
@@ -177,22 +202,77 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
   hideSecondary: false,
   hideNotes: false,
   autoHideHeader: true,
+  themeMode: "paper",
+  readingDepthMode: "workbench",
+  pureLangMode: "original",
+  viewMode: "reader",
+  startOnHome: true,
   backJumpOriginId: null,
   flashUnitId: null,
   tooltip: { visible: false, text: "", x: 0, y: 0 },
+  onboardingOpen: false,
+  onboardingCompleted: true,
 
   hydrateFromStorage: async () => {
     if (get().hydrated) return;
-    const [savedDocs, savedAnnotations, savedActiveId, savedLlm] = await Promise.all([
+    const [
+      savedDocs,
+      savedAnnotations,
+      savedActiveId,
+      savedLlm,
+      savedTheme,
+      savedDepth,
+      savedPureLang,
+      savedOnboardingDone,
+      savedStartOnHome,
+    ] = await Promise.all([
       readPersistedValue<WorkbenchDocument[]>(STORAGE_KEYS.DOCUMENTS),
       readPersistedValue<Record<string, UserAnnotationsState>>(STORAGE_KEYS.ANNOTATIONS),
       readPersistedValue<string>(STORAGE_KEYS.ACTIVE_DOC_ID),
       readPersistedValue<LLMConfig>(STORAGE_KEYS.LLM_CONFIG),
+      readPersistedValue<WorkbenchThemeMode>(STORAGE_KEYS.THEME),
+      readPersistedValue<ReadingDepthMode>(STORAGE_KEYS.READING_DEPTH),
+      readPersistedValue<PureLangMode>(STORAGE_KEYS.PURE_LANG),
+      readPersistedValue<boolean>(STORAGE_KEYS.ONBOARDING_DONE),
+      readPersistedValue<boolean>(STORAGE_KEYS.START_ON_HOME),
     ]);
 
-    const docs = savedDocs && savedDocs.length > 0 ? savedDocs : DEMO_DOCUMENTS;
+    const repoDemo = DEMO_DOCUMENTS.find((d) => d.modeId === "repo-deconstruct");
+    let docs: WorkbenchDocument[];
+    let docsMigrated = false;
+
+    if (savedDocs && savedDocs.length > 0) {
+      const hasLegacyAsyncflow = savedDocs.some((d) => d.id === "demo-repo-asyncflow");
+      if (hasLegacyAsyncflow && repoDemo) {
+        const hasNewRepoDemo = savedDocs.some((d) => d.id === repoDemo.id);
+        docs = savedDocs
+          .map((d) => (d.id === "demo-repo-asyncflow" ? (hasNewRepoDemo ? null : repoDemo) : d))
+          .filter((d): d is WorkbenchDocument => d !== null);
+        docsMigrated = true;
+      } else {
+        docs = savedDocs;
+      }
+    } else {
+      docs = DEMO_DOCUMENTS;
+    }
+
+    const mappedSavedActiveId =
+      savedActiveId === "demo-repo-asyncflow" && repoDemo ? repoDemo.id : savedActiveId;
     const activeId =
-      savedActiveId && docs.some((d) => d.id === savedActiveId) ? savedActiveId : docs[0].id;
+      mappedSavedActiveId && docs.some((d) => d.id === mappedSavedActiveId)
+        ? mappedSavedActiveId
+        : docs[0].id;
+    const validTheme: WorkbenchThemeMode =
+      savedTheme === "aurora" || savedTheme === "studio" || savedTheme === "paper"
+        ? savedTheme
+        : "paper";
+    const validDepth: ReadingDepthMode =
+      savedDepth === "pure" || savedDepth === "review" || savedDepth === "workbench"
+        ? savedDepth
+        : "workbench";
+    const validPureLang: PureLangMode = savedPureLang === "chinese" ? "chinese" : "original";
+    const completed = savedOnboardingDone === true;
+    const preferHome = savedStartOnHome !== false;
 
     set({
       hydrated: true,
@@ -200,12 +280,61 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
       activeDocumentId: activeId,
       annotationsByDocId: savedAnnotations ?? {},
       llmConfig: savedLlm ?? DEFAULT_LLM_CONFIG,
+      themeMode: validTheme,
+      readingDepthMode: validDepth,
+      pureLangMode: validPureLang,
+      startOnHome: preferHome,
+      viewMode: preferHome ? "home" : "reader",
+      onboardingCompleted: completed,
+      onboardingOpen: !completed,
     });
+
+    if (docsMigrated) {
+      void persistValue(STORAGE_KEYS.DOCUMENTS, docs);
+      if (savedActiveId === "demo-repo-asyncflow") {
+        void persistValue(STORAGE_KEYS.ACTIVE_DOC_ID, activeId);
+      }
+    }
+  },
+
+  setViewMode: (viewMode) => {
+    set({ viewMode });
+  },
+
+  toggleStartOnHome: () => {
+    const next = !get().startOnHome;
+    set({ startOnHome: next });
+    void persistValue(STORAGE_KEYS.START_ON_HOME, next);
+  },
+
+  openDocumentForReview: (docId) => {
+    set({
+      activeDocumentId: docId,
+      viewMode: "reader",
+      readingDepthMode: "review",
+      activeDimFilter: null,
+      paretoMode: false,
+      fuzzyOnlyMode: false,
+      firstPassMode: false,
+      backJumpOriginId: null,
+    });
+    void persistValue(STORAGE_KEYS.ACTIVE_DOC_ID, docId);
+    void persistValue(STORAGE_KEYS.READING_DEPTH, "review");
+  },
+
+  openOnboarding: () => {
+    set({ onboardingOpen: true });
+  },
+
+  completeOnboarding: () => {
+    set({ onboardingOpen: false, onboardingCompleted: true });
+    void persistValue(STORAGE_KEYS.ONBOARDING_DONE, true);
   },
 
   setActiveDocument: (id) => {
     set({
       activeDocumentId: id,
+      viewMode: "reader",
       activeDimFilter: null,
       paretoMode: false,
       fuzzyOnlyMode: false,
@@ -228,6 +357,7 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
     set({
       documents: nextDocs,
       activeDocumentId: normalizedDoc.id,
+      viewMode: "reader",
       activeDimFilter: null,
       paretoMode: false,
       fuzzyOnlyMode: false,
@@ -508,6 +638,18 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
   toggleHideSecondary: () => set((state) => ({ hideSecondary: !state.hideSecondary })),
   toggleHideNotes: () => set((state) => ({ hideNotes: !state.hideNotes })),
   toggleAutoHideHeader: () => set((state) => ({ autoHideHeader: !state.autoHideHeader })),
+  setThemeMode: (themeMode) => {
+    set({ themeMode });
+    void persistValue(STORAGE_KEYS.THEME, themeMode);
+  },
+  setReadingDepthMode: (readingDepthMode) => {
+    set({ readingDepthMode });
+    void persistValue(STORAGE_KEYS.READING_DEPTH, readingDepthMode);
+  },
+  setPureLangMode: (pureLangMode) => {
+    set({ pureLangMode });
+    void persistValue(STORAGE_KEYS.PURE_LANG, pureLangMode);
+  },
 
   jumpToUnit: (targetUnitId, originUnitId) => {
     set({

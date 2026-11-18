@@ -2,7 +2,28 @@ import { z } from "zod";
 import { resolveSearchQueryWithTools } from "@/core/engine/agent-search";
 import { runChunkedAnalysis } from "@/core/engine/chunk-orchestrator";
 import { createAiSdkObjectGenerator } from "@/core/engine/llm-adapters";
+import {
+  formatV2tResultToSections,
+  isV2tAvailable,
+  runVideoToTextBridge,
+} from "@/core/engine/v2t-bridge";
+import { registerVideoTranscriber } from "@/core/engine/web-fetchers";
 import { defaultPluginRegistry } from "@/plugins";
+
+if (isV2tAvailable()) {
+  registerVideoTranscriber(async (url, cacheKey, startSectionIndex, lang = "zh") => {
+    const res = await runVideoToTextBridge(url, cacheKey, lang);
+    if (!res) return null;
+    const sections = formatV2tResultToSections(res, startSectionIndex);
+    if (sections.length === 0) return null;
+    return {
+      sections,
+      title: res.source.title,
+      uploader: res.source.uploader,
+      durationSec: res.source.duration,
+    };
+  });
+}
 
 const AnalyzeRequestSchema = z.object({
   modeId: z.string().min(1),

@@ -1,0 +1,1045 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="./assets/black-cat.svg" type="image/svg+xml">
+<title>PurrParse — 45s Showcase</title>
+<style>
+  @font-face {
+    font-family: "Lora";
+    src: url(fonts/lora-700.woff2) format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: block;
+  }
+  @font-face {
+    font-family: "IBM Plex Sans";
+    src: url(fonts/ibm-plex-sans-700.woff2) format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: block;
+  }
+  @font-face {
+    font-family: "IBM Plex Mono";
+    src: url(fonts/ibm-plex-mono-600.woff2) format("woff2");
+    font-weight: 600;
+    font-style: normal;
+    font-display: block;
+  }
+  html, body { margin: 0; background: #F1EADC; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module" src="./preview.js"></script>
+<script type="module">
+import { DUR, CUES, b } from './timeline.js';
+import {
+  clamp, seg, lerp, ease, glide, snap, spring, springTo,
+  stagger, pulse, stageSize, setupCanvas, camera, loadFonts, loadImage, mix, rgba,
+} from './motion.js';
+
+const { W, H } = stageSize();
+const ctx = setupCanvas(document.getElementById('c'), W, H);
+const U = Math.min(W, H) / 1080;
+
+const SERIF = (s, w = 700) => `${w} ${s}px "Lora", "PingFang SC", "Hiragino Sans GB", serif`;
+const SANS = (s, w = 700) => `${w} ${s}px "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", sans-serif`;
+const MONO = (s, w = 600) => `${w} ${s}px "IBM Plex Mono", "PingFang SC", monospace`;
+
+const ASSET_PATHS = {
+  blackCat: './assets/black-cat.svg',
+  heroPaper: './assets/ui-hero-paper.png',
+  dualPaper: './assets/ui-dual-paper.png',
+  dualAurora: './assets/ui-dual-aurora.png',
+  themeAurora: './assets/ui-theme-aurora.png',
+  themeStudio: './assets/ui-theme-studio.png',
+  qaModal: './assets/ui-qa-modal.png',
+  qaDashed: './assets/ui-qa-dashed.png',
+  pureEn: './assets/ui-pure-en.png',
+  pureZh: './assets/ui-pure-zh.png',
+  studioModal: './assets/ui-studio-modal.png',
+  libraryDrawer: './assets/ui-library-drawer.png',
+  cognitivePaper: './assets/ui-cognitive-paper.png',
+  repoAurora: './assets/ui-repo-aurora.png',
+};
+
+const IMG = Object.fromEntries(
+  await Promise.all(Object.entries(ASSET_PATHS).map(async ([k, p]) => [k, await loadImage(p)])),
+);
+
+// ── Shared Primitives (no duplication) ──
+function roundFill(x, y, w, h, r, fill, stroke = null, lw = 1) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, Math.max(0.5, w), Math.max(0.5, h), Math.min(r, h / 2, w / 2));
+  ctx.fillStyle = fill;
+  ctx.fill();
+  if (stroke) {
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lw;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function windowRect(img, x, y, w, h, { zoom = 1, focusX = 0.5, focusY = 0.5 } = {}) {
+  const imgRatio = img.naturalWidth / img.naturalHeight;
+  const boxRatio = w / h;
+  let baseW, baseH;
+  if (boxRatio > imgRatio) {
+    baseW = w;
+    baseH = w / imgRatio;
+  } else {
+    baseH = h;
+    baseW = h * imgRatio;
+  }
+  const drawW = baseW * zoom;
+  const drawH = baseH * zoom;
+  const maxShiftX = Math.max(0, drawW - w);
+  const maxShiftY = Math.max(0, drawH - h);
+  const dx = x - clamp(focusX * drawW - w / 2, 0, maxShiftX);
+  const dy = y - clamp(focusY * drawH - h / 2, 0, maxShiftY);
+  return { dx, dy, drawW, drawH };
+}
+
+function uiPt(rect, u, v) {
+  return [rect.dx + u * rect.drawW, rect.dy + v * rect.drawH];
+}
+
+/** Draw an image inside a rounded card, optionally with internal camera pan/zoom (cleanly preserving 16:10 sharpness). */
+function drawWindowCard(img, x, y, w, h, {
+  radius = 18 * U,
+  zoom = 1,
+  focusX = 0.5, // normalized focus point [0..1] inside screenshot
+  focusY = 0.5,
+  bg = '#FAF6EE',
+  border = '#D5C9B1',
+  borderWidth = 1.5 * U,
+  shadowColor = 'rgba(26, 39, 68, 0.16)',
+  shadowBlur = 46 * U,
+  shadowY = 20 * U,
+  alpha = 1,
+} = {}) {
+  if (alpha <= 0.005 || w <= 2 || h <= 2) return null;
+  const rect = windowRect(img, x, y, w, h, { zoom, focusX, focusY });
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.shadowColor = shadowColor;
+  ctx.shadowBlur = shadowBlur;
+  ctx.shadowOffsetY = shadowY;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, radius);
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.clip();
+  ctx.drawImage(img, rect.dx, rect.dy, rect.drawW, rect.drawH);
+  ctx.restore();
+
+  if (border && borderWidth > 0) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, radius);
+    ctx.strokeStyle = border;
+    ctx.lineWidth = borderWidth;
+    ctx.stroke();
+    ctx.restore();
+  }
+  return rect;
+}
+
+function drawMaskedText(text, x, y, font, color, k, lineH) {
+  if (k <= 0.01) return;
+  ctx.save();
+  ctx.font = font;
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.beginPath();
+  ctx.rect(x - 10 * U, y - lineH * 0.9, W, lineH * 1.15);
+  ctx.clip();
+  ctx.globalAlpha = clamp(k * 1.35);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y + (1 - k) * lineH * 0.65);
+  ctx.restore();
+}
+
+function drawCursor(x, y, scale = 1, { fill = '#1A2744', stroke = '#FFFFFF', clickK = 0, ringColor = '#D9821E' } = {}) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (clickK > 0 && clickK < 1) {
+    ctx.save();
+    ctx.strokeStyle = rgba(ringColor, (1 - clickK) * 0.9);
+    ctx.lineWidth = 3 * U;
+    ctx.beginPath();
+    ctx.arc(0, 0, lerp(10 * U, 48 * U, ease.outCubic(clickK)), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.scale(scale * U, scale * U);
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.30)';
+  ctx.shadowBlur = 12 * U;
+  ctx.shadowOffsetY = 4 * U;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, 27);
+  ctx.lineTo(7.5, 20.5);
+  ctx.lineTo(13.5, 32);
+  ctx.lineTo(18.2, 29.8);
+  ctx.lineTo(12, 18.5);
+  ctx.lineTo(20.5, 18.5);
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.lineWidth = 2.2;
+  ctx.strokeStyle = stroke;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawLeftRail(t, tIn, tOut, { badge, line1, line2, sub1, sub2, ink, slate, pillBg, pillBorder, accent }) {
+  const kIn = t < tIn + 0.8 ? glide(seg(t, tIn, tIn + 0.55)) : 1;
+  const kOut = tOut < 900 ? 1 - ease.inCubic(seg(t, tOut - 0.32, tOut)) : 1;
+  const vis = kIn * kOut;
+  if (vis <= 0.01) return;
+
+  const lx = 78 * U;
+  const k1 = clamp(kIn * 1.15);
+  const k2 = clamp(seg(t, tIn + 0.08, tIn + 0.52) * 1.1);
+  const kSub = clamp(seg(t, tIn + 0.18, tIn + 0.65));
+
+  ctx.save();
+  ctx.globalAlpha = kOut;
+
+  // Pill Badge (>= 18px readable mono)
+  ctx.save();
+  ctx.globalAlpha = vis;
+  ctx.font = MONO(18 * U);
+  const bw = ctx.measureText(badge).width + 54 * U;
+  const by = 226 * U + (1 - k1) * 14 * U;
+  roundFill(lx, by, bw, 42 * U, 21 * U, pillBg, pillBorder, 1.4 * U);
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.arc(lx + 22 * U, by + 21 * U, 5 * U, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = ink;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(badge, lx + 38 * U, by + 22 * U);
+  ctx.restore();
+
+  // Headline (max ~8 CJK chars/line at 44px => <= 360px, fits cleanly inside 444px column!)
+  drawMaskedText(line1, lx, 344 * U, SERIF(44 * U), ink, k1, 62 * U);
+  drawMaskedText(line2, lx, 408 * U, SERIF(44 * U), ink, k2, 62 * U);
+
+  // Underline accent bar
+  ctx.fillStyle = rgba(accent, 0.36 * vis);
+  ctx.fillRect(lx, 422 * U, 150 * U * k2, 7 * U);
+
+  // Two-line crisp spec copy (>= 21px so phone --text-check is crystal clear!)
+  ctx.save();
+  ctx.globalAlpha = kSub * kOut;
+  ctx.font = SANS(22 * U, 700);
+  ctx.fillStyle = slate;
+  ctx.textBaseline = 'alphabetic';
+  const dy = (1 - kSub) * 12 * U;
+  if (sub1) ctx.fillText(sub1, lx, 488 * U + dy);
+  ctx.fillStyle = ink;
+  if (sub2) ctx.fillText(sub2, lx, 526 * U + dy);
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawHighlightBox(x, y, w, h, color, alpha = 1) {
+  if (alpha <= 0.01) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3 * U;
+  ctx.setLineDash([8 * U, 5 * U]);
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 10 * U);
+  ctx.stroke();
+  ctx.fillStyle = rgba(color, 0.12);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPurrParseMark(cx, cy, scale, splitK = 1, navy = '#1A2744', amber = '#D9821E', blue = '#2563EB') {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale * U, scale * U);
+
+  const k = clamp(splitK);
+
+  // Incoming raw information ray (left -> black cat emblem)
+  if (k > 0.02) {
+    ctx.strokeStyle = navy;
+    ctx.lineWidth = 3.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-82 - 92 * k, 18 * k);
+    ctx.lineTo(-82, 0);
+    ctx.stroke();
+
+    ctx.fillStyle = amber;
+    ctx.beginPath();
+    ctx.arc(-82 - 92 * k, 18 * k, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Soft warm paper halo ring framing the black-cat brand sticker
+  ctx.save();
+  ctx.strokeStyle = 'rgba(217, 130, 30, 0.28)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, 74, -Math.PI * 0.85, -Math.PI * 0.85 + Math.PI * 2 * k);
+  ctx.stroke();
+  ctx.restore();
+
+  // PurrParse black-cat brand sticker (preserve natural 602:667 aspect ratio)
+  if (IMG.blackCat) {
+    const catH = 122;
+    const catW = catH * (602 / 667);
+    ctx.save();
+    ctx.shadowColor = 'rgba(26, 39, 68, 0.14)';
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 5;
+    ctx.drawImage(IMG.blackCat, -catW / 2, -catH / 2 - 3, catW, catH);
+    ctx.restore();
+  }
+
+  // Parsed 3 cognitive bands exiting right (amber / navy / blue)
+  if (k > 0.02) {
+    const rays = [
+      [-16, -24, amber],
+      [0, 0, navy],
+      [16, 24, blue],
+    ];
+    ctx.lineCap = 'round';
+    rays.forEach(([yStart, yEnd, col]) => {
+      const ex = 82 + 98 * k;
+      const ey = yEnd * 1.35 * k;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 3.0;
+      ctx.beginPath();
+      ctx.moveTo(82, yStart * 0.45);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 3.6 * k, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  ctx.restore();
+}
+
+function oklabHex(hexA, hexB, k) {
+  if (k <= 0.0001) return hexA;
+  if (k >= 0.9999) return hexB;
+  const [r, g, b] = mix(hexA, hexB, k).match(/\d+/g).map(Number);
+  return '#' + [r, g, b].map(v => clamp(v, 0, 255).toString(16).padStart(2, '0')).join('');
+}
+
+// Desk Theme Curve (smooth OKLab transitions across Paper -> Night Aurora -> Pure White -> Paper)
+function deskPalette(t) {
+  const toNight = glide(seg(t, b(58.8), b(59.6)));
+  const toStudio = glide(seg(t, b(61.8), b(62.6)));
+  const backPaper = glide(seg(t, b(64.5), b(65.4)));
+
+  // Step 1: Paper -> Aurora
+  let bg = oklabHex('#F1EADC', '#0B111E', toNight);
+  let ink = oklabHex('#1A2744', '#F8FAFC', toNight);
+  let slate = oklabHex('#475569', '#94A3B8', toNight);
+  let pillBg = oklabHex('#E6DEC8', '#152038', toNight);
+  let border = oklabHex('#D5C9B1', '#334155', toNight);
+  let accent = oklabHex('#D9821E', '#60A5FA', toNight);
+
+  // Step 2: Aurora -> Pure White Studio
+  bg = oklabHex(bg, '#F8FAFC', toStudio);
+  ink = oklabHex(ink, '#0F172A', toStudio);
+  slate = oklabHex(slate, '#475569', toStudio);
+  pillBg = oklabHex(pillBg, '#E2E8F0', toStudio);
+  border = oklabHex(border, '#CBD5E1', toStudio);
+  accent = oklabHex(accent, '#2563EB', toStudio);
+
+  // Step 3: Back to serene archival Paper
+  bg = oklabHex(bg, '#F1EADC', backPaper);
+  ink = oklabHex(ink, '#1A2744', backPaper);
+  slate = oklabHex(slate, '#475569', backPaper);
+  pillBg = oklabHex(pillBg, '#E6DEC8', backPaper);
+  border = oklabHex(border, '#D5C9B1', backPaper);
+  accent = oklabHex(accent, '#D9821E', backPaper);
+
+  return { bg, ink, slate, pillBg, border, accent };
+}
+
+window.DUR = DUR;
+window.render = t => {
+  const P = deskPalette(t);
+
+  // 1. Background stage + subtle desk dots
+  ctx.save();
+  ctx.fillStyle = P.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const glow = ctx.createRadialGradient(W * 0.68, H * 0.48, 30 * U, W * 0.68, H * 0.48, 920 * U);
+  glow.addColorStop(0, rgba(P.accent, 0.08));
+  glow.addColorStop(1, rgba(P.bg, 0));
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = rgba(P.ink, 0.06);
+  for (let gx = 96 * U; gx < W - 60 * U; gx += 54 * U) {
+    for (let gy = 96 * U; gy < H - 60 * U; gy += 54 * U) {
+      ctx.fillRect(gx, gy, 1.5 * U, 1.5 * U);
+    }
+  }
+
+  // Subtle camera impact kick on Beat 2 (Opening) & Beat 43 (Signature Drop)
+  const impactScale = 1 + 0.016 * pulse(t, [b(2), b(43)], 0.16);
+  ctx.save();
+  camera(ctx, W, H, { x: W / 2, y: H / 2, zoom: impactScale });
+
+  // Main stage window dimensions (Right-Stage for paired copy, Centered when full focus)
+  const RX = 540 * U;
+  const RY = 112 * U;
+  const RW = 1300 * U;
+  const RH = 812.5 * U; // exact 16:10
+
+  // =========================================================================
+  // SCENE 1 (0.0s - 6.5s · b(0)..b(13)): Hook -> Studio Modal -> 3 Engines
+  // =========================================================================
+  if (t < b(13.0)) {
+    // 1A: Source convergence pills into PurrParse center (b(0) .. b(2.2)) — well separated around mark until snap merge
+    if (t < b(2.8)) {
+      const kOpen = spring(t - b(0.2), { freq: 2.5, damp: 0.72 });
+      const kMerge = ease.inExpo(seg(t, b(1.45), b(2.0)));
+      const fadeOut = 1 - ease.outCubic(seg(t, b(2.0), b(2.4)));
+      const cx = W / 2, cy = H / 2;
+
+      if (fadeOut > 0.01) {
+        ctx.save();
+        ctx.globalAlpha = fadeOut;
+        drawPurrParseMark(cx, cy - 20 * U, lerp(0.85, 1.15, kOpen), clamp(kOpen), '#1A2744', '#D9821E', '#2563EB');
+
+        const sources = [
+          { label: 'arXiv / PDF 论文', sx: cx - 510 * U, sy: cy - 210 * U },
+          { label: '抖音 / B站 · 本地音轨转写', sx: cx, sy: cy - 270 * U },
+          { label: 'GitHub 开源架构仓库', sx: cx + 510 * U, sy: cy - 210 * U },
+        ];
+        sources.forEach((src, i) => {
+          const ks = spring(t - b(0.35) - stagger(i, 3, 0.18), { freq: 2.8, damp: 0.78 });
+          const px = lerp(src.sx, cx, kMerge);
+          const py = lerp(src.sy, cy - 20 * U, kMerge);
+          const sc = lerp(1, 0.45, kMerge);
+          ctx.save();
+          ctx.translate(px, py);
+          ctx.scale(sc, sc);
+          ctx.globalAlpha = clamp(ks * 1.4) * clamp(1 - kMerge * 1.25);
+          ctx.font = SANS(24 * U, 700);
+          const pw = ctx.measureText(src.label).width + 52 * U;
+          roundFill(-pw / 2, -26 * U, pw, 52 * U, 26 * U, '#FAF6EE', '#D9821E', 2 * U);
+          ctx.fillStyle = '#1A2744';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(src.label, 0, 1 * U);
+          ctx.restore();
+        });
+        ctx.restore();
+      }
+    }
+
+    // 1B: Hero opens cleanly at b(2.0), Left Rail enters, Studio pops on b(4.0), Modes glide b(8.0)..b(13.0)
+    if (t >= b(1.9)) {
+      const kWin = spring(t - b(2.0), { freq: 2.3, damp: 0.8 });
+      const slideIn = 1 - kWin;
+      const cardX = RX + slideIn * 280 * U;
+      const cardY = RY + slideIn * 36 * U;
+
+      drawLeftRail(t, b(2.1), b(12.8), {
+        badge: '01 / 多源编排工作台',
+        line1: '多源资料输入，',
+        line2: '一键编译精读。',
+        sub1: 'PDF 论文 · 抖音/B站音轨',
+        sub2: 'GitHub 源码统一结构拆解',
+        ink: P.ink, slate: P.slate, pillBg: P.pillBg, pillBorder: P.border, accent: P.accent,
+      });
+
+      const kMode1 = snap(seg(t, b(7.9), b(8.8)));   // Hero -> Cognitive
+      const kMode2 = snap(seg(t, b(10.5), b(11.3))); // Cognitive -> Repo
+      const modalK = spring(t - b(4.0), { freq: 2.8, damp: 0.78 }) * (1 - snap(seg(t, b(7.4), b(8.0))));
+
+      const heroRect = kMode1 < 0.99 ? drawWindowCard(IMG.heroPaper, cardX, cardY, RW, RH, {
+        zoom: lerp(0.96, 1.0, kWin),
+        alpha: clamp(kWin * 1.5) * (1 - kMode1),
+        border: P.border,
+      }) : windowRect(IMG.heroPaper, cardX, cardY, RW, RH, { zoom: 1 });
+
+      let modalRect = null;
+      if (modalK > 0.01) {
+        const mz = lerp(0.88, 1.18, clamp(modalK)); // 1.18 preserves full unclipped modal + buttons!
+        modalRect = drawWindowCard(IMG.studioModal, cardX, cardY, RW, RH, {
+          zoom: mz,
+          focusX: 0.5,
+          focusY: 0.50,
+          alpha: clamp(modalK * 1.4),
+          border: P.accent,
+          borderWidth: 2 * U,
+        });
+      }
+      if (kMode1 > 0.01 && kMode2 < 0.99) {
+        const slideOffset = (1 - kMode1) * 140 * U - kMode2 * 140 * U;
+        drawWindowCard(IMG.cognitivePaper, RX + slideOffset, RY, RW, RH, {
+          zoom: 1.04,
+          focusX: 0.5,
+          focusY: 0.25,
+          alpha: kMode1 * (1 - kMode2),
+          border: '#C2410C',
+          borderWidth: 2 * U,
+        });
+      }
+      if (kMode2 > 0.01) {
+        const slideOffset = (1 - kMode2) * 140 * U;
+        drawWindowCard(IMG.repoAurora, RX + slideOffset, RY, RW, RH, {
+          zoom: 1.04,
+          focusX: 0.5,
+          focusY: 0.22,
+          alpha: kMode2,
+          bg: '#0B111E',
+          border: '#3B82F6',
+          borderWidth: 2 * U,
+        });
+      }
+
+      // Active Mode Label placed cleanly ABOVE screenshot top edge (never covers DAG!)
+      if (t >= b(8.0)) {
+        const isRepo = kMode2 > 0.5;
+        const badgeText = isRepo
+          ? 'MODE 03 · GitHub / AsyncFlow Go 源码调用链拆解'
+          : 'MODE 02 · 认知内化 / 抖音 B站音频转写结构重塑';
+        const kb = glide(seg(t, b(8.0), b(8.6)));
+        ctx.save();
+        ctx.globalAlpha = kb * (1 - seg(t, b(12.5), b(13.0)));
+        ctx.font = MONO(19 * U);
+        const pw = ctx.measureText(badgeText).width + 44 * U;
+        roundFill(RX, RY - 58 * U, pw, 42 * U, 10 * U, isRepo ? '#0F172A' : '#7C2D12', '#F59E0B', 1.5 * U);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeText, RX + 22 * U, RY - 36 * U);
+        ctx.restore();
+      }
+
+      // Spring Cursor clicking exact "+ 新建" on hero (b(4.0)) -> exact MODE 02 inside modal
+      if (t >= b(2.4) && t < b(8.5)) {
+        const pNew = uiPt(heroRect, 0.0856, 0.0242);
+        const mRef = modalRect || windowRect(IMG.studioModal, RX, RY, RW, RH, { zoom: 1.18, focusX: 0.5, focusY: 0.5 });
+        const pMode2 = uiPt(mRef, 0.500, 0.275);
+        const [cx, cy] = springTo(
+          t,
+          [
+            [b(2.4), [RX + RW * 0.45, RY + RH * 0.5]],
+            [b(3.4), pNew],
+            [b(5.2), pMode2],
+          ],
+          { freq: 3.2, damp: 0.82 },
+        );
+        const fadeCur = 1 - seg(t, b(7.8), b(8.4));
+        ctx.save();
+        ctx.globalAlpha = fadeCur;
+        drawCursor(cx, cy, 1 - 0.15 * pulse(t, b(4.0), 0.12), {
+          clickK: seg(t, b(4.0), b(4.8)),
+        });
+        ctx.restore();
+      }
+    }
+  }
+
+  // =========================================================================
+  // SCENE 2 (6.5s - 14.0s · b(13)..b(28)): Top Mental Model & DAG Topology
+  // =========================================================================
+  if (t >= b(12.6) && t < b(28.4)) {
+    const enterK = spring(t - b(13.0), { freq: 2.3, damp: 0.82 });
+    const exitK = 1 - ease.inCubic(seg(t, b(27.6), b(28.4)));
+
+    drawLeftRail(t, b(13.0), b(27.8), {
+      badge: '02 / 顶部认知鸟瞰',
+      line1: '30 秒先见森林，',
+      line2: '点击拓扑直跳正文。',
+      sub1: '真问题 · 核心直觉 · 交换代价',
+      sub2: 'Dagre 交互式架构数据流图',
+      ink: P.ink, slate: P.slate, pillBg: P.pillBg, pillBorder: P.border, accent: P.accent,
+    });
+
+    // 1.20x smooth zoom preserves ALL 3 scaffold cards & pans slightly right for DAG6 Complexity O(1)!
+    const zK = glide(seg(t, b(15.2), b(18.0)));
+    const dagZoom = lerp(1.0, 1.20, zK);
+    const focusX = lerp(0.46, 0.58, glide(seg(t, b(21.5), b(23.5))));
+    const focusY = lerp(0.32, 0.43, zK);
+
+    const rect2 = drawWindowCard(IMG.heroPaper, RX + (1 - enterK) * 120 * U, RY, RW, RH, {
+      zoom: dagZoom,
+      focusX,
+      focusY,
+      alpha: clamp(enterK * 1.4) * exitK,
+      border: P.border,
+    });
+
+    // Vector cursor + exact pixel-measured box highlight locked via uiPt() to real DAG nodes!
+    if (rect2 && t >= b(17.5) && t < b(27.6)) {
+      const nodeSpecs = [
+        { u: 0.2693, v: 0.6750, uw: 0.124, vh: 0.072 }, // Multi-Head Attn
+        { u: 0.4207, v: 0.6750, uw: 0.125, vh: 0.073 }, // Scaled Dot-Product
+        { u: 0.8729, v: 0.6753, uw: 0.125, vh: 0.073 }, // Complexity O(1)
+      ];
+      const nodes = nodeSpecs.map(ns => {
+        const [x, y] = uiPt(rect2, ns.u, ns.v);
+        return { x, y, w: ns.uw * rect2.drawW, h: ns.vh * rect2.drawH };
+      });
+      const [hx, hy] = springTo(
+        t,
+        [
+          [b(17.2), uiPt(rect2, 0.14, 0.70)],
+          [b(18.3), [nodes[0].x, nodes[0].y]],
+          [b(20.3), [nodes[1].x, nodes[1].y]],
+          [b(22.3), [nodes[2].x, nodes[2].y]],
+        ],
+        { freq: 3.4, damp: 0.8 },
+      );
+
+      nodes.forEach((nd, i) => {
+        const hitT = b(19 + i * 2);
+        const nextT = b(21 + i * 2);
+        const active = seg(t, hitT - 0.1, hitT + 0.15) * (1 - seg(t, nextT - 0.1, nextT + 0.1));
+        if (active > 0.05) {
+          drawHighlightBox(nd.x - nd.w / 2, nd.y - nd.h / 2, nd.w, nd.h, '#D9821E', active * exitK);
+        }
+      });
+
+      const tickClick = Math.max(
+        seg(t, b(19.0), b(19.7)),
+        seg(t, b(21.0), b(21.7)),
+        seg(t, b(23.0), b(23.7)),
+      );
+      ctx.save();
+      ctx.globalAlpha = exitK;
+      drawCursor(hx, hy, 1, { clickK: tickClick % 1 });
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // SCENE 3 (14.0s - 21.5s · b(28)..b(43)): Dual-Column & Epistemic Highlighting
+  // =========================================================================
+  if (t >= b(27.8) && t < b(43.2)) {
+    const enterK = spring(t - b(28.0), { freq: 2.3, damp: 0.82 });
+    const exitK = 1 - ease.inCubic(seg(t, b(42.5), b(43.2)));
+
+    drawLeftRail(t, b(28.0), b(42.6), {
+      badge: '03 / 双栏结构精读',
+      line1: '五色高亮原文，',
+      line2: '右栏四维拆解内核。',
+      sub1: '核心论点 / 关键概念 / 实验边界',
+      sub2: '理解度标注 + 跨节证据直跳',
+      ink: P.ink, slate: P.slate, pillBg: P.pillBg, pillBorder: P.border, accent: P.accent,
+    });
+
+    const zoomK = glide(seg(t, b(31.5), b(34.5)));
+    const panRight = glide(seg(t, b(35.8), b(39.0))) - glide(seg(t, b(40.5), b(42.4)));
+    const rect3 = drawWindowCard(IMG.dualPaper, RX, RY + (1 - enterK) * 60 * U, RW, RH, {
+      zoom: lerp(1.02, 1.24, zoomK),
+      focusX: lerp(0.38, 0.68, panRight),
+      focusY: lerp(0.32, 0.40, zoomK),
+      alpha: clamp(enterK * 1.4) * exitK,
+      border: P.border,
+    });
+
+    if (rect3 && t >= b(30.5) && t < b(42.8)) {
+      const [cx, cy] = springTo(
+        t,
+        [
+          [b(30.5), uiPt(rect3, 0.25, 0.45)],
+          [b(33.0), uiPt(rect3, 0.110, 0.2219)], // Exact "懂了" pill
+          [b(36.0), uiPt(rect3, 0.905, 0.172)],  // Exact "[跳转验证 -> §6.1]" badge
+          [b(41.2), uiPt(rect3, 0.118, 0.266)],  // Exact start of "sequence transduction models"
+        ],
+        { freq: 3.0, damp: 0.82 },
+      );
+      const popK = t >= b(35.0) ? seg(t, b(35.0), b(35.8)) : seg(t, b(33.0), b(33.7));
+      ctx.save();
+      ctx.globalAlpha = exitK;
+      drawCursor(cx, cy, 1 - 0.12 * pulse(t, [b(33.0), b(35.0)], 0.12), { clickK: popK });
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // SCENE 4 (21.5s - 28.5s · b(43)..b(57)): SIGNATURE Selection Q&A & Dashed Ring
+  // =========================================================================
+  if (t >= b(42.6) && t < b(57.2)) {
+    const enterK = spring(t - b(43.0), { freq: 2.6, damp: 0.80 });
+    const exitK = 1 - ease.inCubic(seg(t, b(56.4), b(57.2)));
+
+    drawLeftRail(t, b(43.0), b(56.5), {
+      badge: '04 / 划词 AI 追问',
+      line1: '疑问钉入原文，',
+      line2: '构建可溯源证据链。',
+      sub1: '任意选区即时弹出证据追问框',
+      sub2: '落定虚线锚框与 [已追问 N 次]',
+      ink: P.ink, slate: P.slate, pillBg: P.pillBg, pillBorder: P.border, accent: P.accent,
+    });
+
+    const modalOpenK = spring(t - b(45.0), { freq: 2.6, damp: 0.78 });
+    const settleDashedK = glide(seg(t, b(51.2), b(52.6)));
+    let activeRect4 = null;
+
+    if (settleDashedK < 0.99) {
+      activeRect4 = drawWindowCard(IMG.dualPaper, RX, RY, RW, RH, {
+        zoom: 1.18,
+        focusX: 0.34,
+        focusY: 0.28,
+        alpha: clamp(enterK * 1.4) * (1 - settleDashedK),
+        border: P.border,
+      });
+
+      if (activeRect4 && t < b(45.4)) {
+        const [sx0, sy0] = uiPt(activeRect4, 0.118, 0.256);
+        const [sx1] = uiPt(activeRect4, 0.258, 0.256);
+        const dragW = (sx1 - sx0) * ease.outCubic(seg(t, b(43.2), b(44.4)));
+        if (dragW > 2) {
+          ctx.save();
+          ctx.globalAlpha = 0.36 * (1 - seg(t, b(45.0), b(45.4)));
+          ctx.fillStyle = '#E59838';
+          ctx.fillRect(sx0, sy0, dragW, 0.020 * activeRect4.drawH);
+          ctx.restore();
+        }
+      }
+    }
+
+    let modalRect4 = null;
+    if (modalOpenK > 0.01 && settleDashedK < 0.99) {
+      const mAlpha = clamp(modalOpenK * 1.5) * (1 - settleDashedK);
+      modalRect4 = drawWindowCard(IMG.qaModal, RX, RY, RW, RH, {
+        zoom: lerp(1.02, 1.18, clamp(modalOpenK)),
+        focusX: 0.50,
+        focusY: 0.49,
+        alpha: mAlpha,
+        bg: '#FFFFFF',
+        border: P.accent,
+        borderWidth: 2 * U,
+      });
+    }
+
+    let dashedRect4 = null;
+    if (settleDashedK > 0.01) {
+      const dz = lerp(1.02, 1.06, glide(seg(t, b(52.0), b(55.5))));
+      dashedRect4 = drawWindowCard(IMG.qaDashed, RX, RY, RW, RH, {
+        zoom: dz,
+        focusX: 0.52,
+        focusY: 0.48,
+        alpha: settleDashedK * exitK,
+        border: P.accent,
+        borderWidth: 2 * U,
+      });
+
+      // Glowing amber dashed badge highlight right around [已追问 1 次] top-right corner of card
+      const badgeGlow = Math.sin(clamp(seg(t, b(52.0), b(54.8))) * Math.PI);
+      if (dashedRect4 && badgeGlow > 0.02) {
+        const [bx, by] = uiPt(dashedRect4, 0.9321, 0.0781);
+        const bw = 0.078 * dashedRect4.drawW;
+        const bh = 0.032 * dashedRect4.drawH;
+        drawHighlightBox(bx - bw / 2, by - bh / 2, bw, bh, '#D9821E', badgeGlow * exitK);
+      }
+    }
+
+    if (t >= b(43.0) && t < b(56.0)) {
+      const dRef = activeRect4 || windowRect(IMG.dualPaper, RX, RY, RW, RH, { zoom: 1.18, focusX: 0.34, focusY: 0.28 });
+      const mRef = modalRect4 || windowRect(IMG.qaModal, RX, RY, RW, RH, { zoom: 1.18, focusX: 0.50, focusY: 0.49 });
+      const sRef = dashedRect4 || windowRect(IMG.qaDashed, RX, RY, RW, RH, { zoom: 1.06, focusX: 0.52, focusY: 0.48 });
+
+      const [cx, cy] = springTo(
+        t,
+        [
+          [b(43.0), uiPt(dRef, 0.118, 0.266)],
+          [b(44.2), uiPt(dRef, 0.258, 0.266)],
+          [b(45.0), uiPt(dRef, 0.0681, 0.2219)], // Exact [AI 追问] button
+          [b(46.0), uiPt(mRef, 0.5252, 0.2775)], // Exact [基于全文跨节证据解答] inside Modal
+          [b(51.4), uiPt(sRef, 0.9321, 0.0781)], // Exact [已追问 1 次] corner badge
+        ],
+        { freq: 3.3, damp: 0.8 },
+      );
+      const clickK = t >= b(51.8) ? seg(t, b(52.0), b(52.8)) : seg(t, b(45.0), b(45.8));
+      ctx.save();
+      ctx.globalAlpha = exitK;
+      drawCursor(cx, cy, 1 - 0.14 * pulse(t, [b(45.0), b(52.0)], 0.12), { clickK });
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // SCENE 5 (28.5s - 38.0s · b(57)..b(76)): Theme Triad + Pure Zen Mode EN <-> ZH
+  // =========================================================================
+  if (t >= b(56.8) && t < b(76.2)) {
+    const enterK = spring(t - b(57.0), { freq: 2.3, damp: 0.82 });
+    const exitK = 1 - ease.inCubic(seg(t, b(75.3), b(76.2)));
+    const isZenPhase = t >= b(64.8);
+
+    if (!isZenPhase) {
+      drawLeftRail(t, b(57.0), b(64.8), {
+        badge: '05 / 三态质感主题',
+        line1: '稿纸、夜空、纯白',
+        line2: '随光线秒级切换。',
+        sub1: 'OKLab 全局对比度深度适配',
+        sub2: '夜间专注零刺眼高亮残留',
+        ink: P.ink, slate: P.slate, pillBg: P.pillBg, pillBorder: P.border, accent: P.accent,
+      });
+    } else {
+      drawLeftRail(t, b(65.0), b(75.6), {
+        badge: '06 / 纯净通读模式',
+        line1: '隐藏批注干扰，',
+        line2: '中英文原稿瞬切。',
+        sub1: '760px 黄金居中专注阅读栏',
+        sub2: '右下角悬浮 Dock 一键退回精读',
+        ink: P.ink, slate: P.slate, pillBg: P.pillBg, pillBorder: P.border, accent: P.accent,
+      });
+    }
+
+    let themeRect = null;
+    if (t < b(65.5)) {
+      const kAurora = snap(seg(t, b(59.0), b(59.5)));
+      const kStudio = snap(seg(t, b(62.0), b(62.5)));
+      const fadeThemes = 1 - snap(seg(t, b(64.8), b(65.5)));
+
+      let activeThemeImg = IMG.heroPaper;
+      let activeBg = '#F1EADC';
+      if (kStudio >= 0.5) {
+        activeThemeImg = IMG.themeStudio;
+        activeBg = '#FFFFFF';
+      } else if (kAurora >= 0.5) {
+        activeThemeImg = IMG.themeAurora;
+        activeBg = '#0B111E';
+      }
+
+      const topZoom = lerp(1.0, 1.12, glide(seg(t, b(57.5), b(59.0))));
+      themeRect = drawWindowCard(activeThemeImg, RX, RY, RW, RH, {
+        zoom: topZoom,
+        focusX: 0.65,
+        focusY: 0.16,
+        alpha: clamp(enterK * 1.4) * fadeThemes,
+        bg: activeBg,
+        border: P.border,
+      });
+    }
+
+    let zenRect = null;
+    if (t >= b(64.8)) {
+      const kZenIn = spring(t - b(65.0), { freq: 2.3, damp: 0.82 });
+      const kZhWipe = snap(seg(t, b(70.5), b(71.2)));
+      const scrollY = lerp(0.08, 0.24, ease.inOutSine(seg(t, b(66.5), b(74.8))));
+
+      if (kZhWipe < 0.99) {
+        zenRect = drawWindowCard(IMG.pureEn, RX, RY, RW, RH, {
+          zoom: 1.24,
+          focusX: 0.50,
+          focusY: scrollY,
+          alpha: clamp(kZenIn * 1.4) * exitK,
+          border: P.border,
+        });
+      }
+
+      if (kZhWipe > 0.01) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(RX, RY, RW * kZhWipe, RH);
+        ctx.clip();
+        zenRect = drawWindowCard(IMG.pureZh, RX, RY, RW, RH, {
+          zoom: 1.24,
+          focusX: 0.50,
+          focusY: scrollY,
+          alpha: exitK,
+          border: P.border,
+        });
+        if (kZhWipe < 0.98) {
+          ctx.fillStyle = P.accent;
+          ctx.fillRect(RX + RW * kZhWipe - 3 * U, RY, 4 * U, RH);
+        }
+        ctx.restore();
+      }
+    }
+
+    if (t >= b(57.4) && t < b(75.0)) {
+      const tRef = themeRect || windowRect(IMG.heroPaper, RX, RY, RW, RH, { zoom: 1.12, focusX: 0.65, focusY: 0.16 });
+      const zRef = zenRect || windowRect(IMG.pureZh, RX, RY, RW, RH, { zoom: 1.24, focusX: 0.50, focusY: 0.14 });
+      const [cx, cy] = springTo(
+        t,
+        [
+          [b(57.4), uiPt(tRef, 0.65, 0.25)],
+          [b(58.4), uiPt(tRef, 0.8710, 0.0242)], // Exact 夜空 pill!
+          [b(61.2), uiPt(tRef, 0.8967, 0.0242)], // Exact 纯白 pill!
+          [b(64.2), uiPt(tRef, 0.7570, 0.0242)], // Exact 通读 pill!
+          [b(66.2), uiPt(zRef, 0.560, 0.140)],  // Rest cleanly on Pure Zen English header
+          [b(69.8), uiPt(zRef, 0.6474, 0.0586)], // Exact 中文稿 pill!
+        ],
+        { freq: 3.4, damp: 0.82 },
+      );
+      const ck = Math.max(
+        seg(t, b(59.0), b(59.7)),
+        seg(t, b(62.0), b(62.7)),
+        seg(t, b(65.0), b(65.7)),
+        seg(t, b(70.5), b(71.3)),
+      );
+      ctx.save();
+      ctx.globalAlpha = exitK;
+      drawCursor(cx, cy, 1 - 0.14 * pulse(t, [b(59.0), b(62.0), b(65.0), b(70.5)], 0.12), {
+        fill: t > b(59.0) && t < b(62.2) ? '#FFFFFF' : '#1A2744',
+        stroke: t > b(59.0) && t < b(62.2) ? '#0B111E' : '#FFFFFF',
+        clickK: ck % 1,
+        ringColor: P.accent,
+      });
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // SCENE 6 (38.0s - 45.0s · b(76)..b(90)): 4D Smart Library & End Card HOLD [83..90]
+  // =========================================================================
+  if (t >= b(75.8)) {
+    if (t < b(82.4)) {
+      const kLibIn = spring(t - b(76.0), { freq: 2.6, damp: 0.82 });
+      const kLibOut = 1 - ease.inCubic(seg(t, b(81.0), b(82.1)));
+
+      drawLeftRail(t, b(76.0), b(81.6), {
+        badge: '07 / 四维智能文库',
+        line1: '一键智能归档，',
+        line2: '多格式持久沉淀。',
+        sub1: '主题 · 进度 · 研究范式 · 标签四维',
+        sub2: '导出 Markdown / Anki / HTML',
+        ink: P.ink, slate: P.slate, pillBg: P.pillBg, pillBorder: P.border, accent: P.accent,
+      });
+
+      const zoomLib = lerp(1.06, 1.24, glide(seg(t, b(76.8), b(79.0))));
+      const libRect = drawWindowCard(IMG.libraryDrawer, RX + (1 - kLibIn) * -140 * U, RY, RW, RH, {
+        zoom: zoomLib,
+        focusX: 0.25,
+        focusY: 0.30,
+        alpha: clamp(kLibIn * 1.4) * kLibOut,
+        border: P.accent,
+        borderWidth: 2 * U,
+      });
+
+      // Highlight ring & cursor locked to exact "[一键智能整理]" yellow button via uiPt()!
+      if (libRect) {
+        const [ox, oy] = uiPt(libRect, 0.3009, 0.0419);
+        const ow = 0.085 * libRect.drawW;
+        const oh = 0.039 * libRect.drawH;
+        const kOrg = Math.sin(clamp(seg(t, b(78.6), b(80.6))) * Math.PI);
+        if (kOrg > 0.02) {
+          drawHighlightBox(ox - ow / 2, oy - oh / 2, ow, oh, '#D9821E', kOrg * kLibOut);
+        }
+
+        if (t < b(81.5)) {
+          const [cx, cy] = springTo(
+            t,
+            [[b(76.2), uiPt(libRect, 0.22, 0.38)], [b(78.2), [ox, oy]]],
+            { freq: 3.3, damp: 0.82 },
+          );
+          ctx.save();
+          ctx.globalAlpha = kLibOut;
+          drawCursor(cx, cy, 1 - 0.14 * pulse(t, b(79.0), 0.12), {
+            clickK: seg(t, b(79.0), b(79.8)),
+          });
+          ctx.restore();
+        }
+      }
+    }
+
+    // 6B: End Lockup & Intentional Quiet Hold (Settles COMPLETELY by b(83.0) = 41.50s, held identically through 45.0s)
+    if (t >= b(81.4)) {
+      const kEnd = glide(seg(t, b(81.5), b(83.0)));
+      const kLogo = clamp(seg(t, b(81.5), b(82.4)));
+      const kWord = clamp(seg(t, b(81.8), b(82.7)));
+      const kTag = clamp(seg(t, b(82.1), b(82.95)));
+
+      const cx = W / 2;
+      const cy = H / 2;
+
+      ctx.save();
+      ctx.globalAlpha = kEnd;
+
+      // Clean PurrParse black-cat emblem + parsing beam
+      drawPurrParseMark(cx, cy - 180 * U, lerp(0.9, 1.15, kLogo), kLogo, '#1A2744', '#D9821E', '#2563EB');
+
+      // Eyebrow label (>= 18px)
+      ctx.save();
+      ctx.globalAlpha = kLogo * kEnd;
+      ctx.font = MONO(19 * U);
+      ctx.fillStyle = '#D9821E';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('PURRPARSE  //  MULTIMODAL READING SYSTEM', cx, cy - 72 * U);
+      ctx.restore();
+
+      // Brand Wordmark + Core Thesis (crisp masked settle)
+      ctx.save();
+      ctx.globalAlpha = kWord * kEnd;
+      ctx.font = SERIF(76 * U);
+      ctx.fillStyle = '#1A2744';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('PurrParse', cx, cy + 4 * U + (1 - kWord) * 26 * U);
+
+      ctx.font = SANS(40 * U, 700);
+      ctx.fillStyle = '#1A2744';
+      ctx.fillText('穿透表象，重建你的认知结构', cx, cy + 92 * U + (1 - kWord) * 20 * U);
+      ctx.restore();
+
+      // Bottom summary rule & feature triad (>= 22px, zero cutoff)
+      ctx.save();
+      ctx.globalAlpha = kTag * kEnd;
+      ctx.fillStyle = '#D5C9B1';
+      ctx.fillRect(cx - 260 * U, cy + 146 * U, 520 * U * kTag, 2 * U);
+
+      ctx.font = SANS(22 * U, 700);
+      ctx.fillStyle = '#475569';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('学术精读  ·  音视频转写  ·  源码拆解  ·  纯净通读', cx, cy + 188 * U);
+      ctx.restore();
+
+      ctx.restore();
+    }
+  }
+
+  // Slender timeline progress hairline (pure visual affordance, disappears smoothly at final hold)
+  const barVis = 1 - glide(seg(t, b(82.0), b(83.0)));
+  if (barVis > 0.01) {
+    ctx.save();
+    ctx.globalAlpha = barVis;
+    ctx.fillStyle = rgba(P.border, 0.45);
+    ctx.fillRect(0, H - 5 * U, W, 5 * U);
+    ctx.fillStyle = P.accent;
+    ctx.fillRect(0, H - 5 * U, W * clamp(t / b(83)), 5 * U);
+    ctx.restore();
+  }
+
+  ctx.restore(); // camera
+  ctx.restore(); // stage
+};
+
+await loadFonts([
+  '700 44px "Lora"',
+  '700 40px "IBM Plex Sans"',
+  '600 19px "IBM Plex Mono"',
+]);
+window.render(0);
+window.READY = true;
+</script>
+</body>
+</html>

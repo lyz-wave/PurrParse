@@ -6,10 +6,434 @@
   --font-mono: var(--font-ibm-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
+:root,
+[data-theme="paper"] {
+  --prism-bg: #f1eadc;
+  --prism-surface: #fcf9f2;
+  --prism-surface-subtle: #f6f0e3;
+  --prism-surface-muted: #e8dec9;
+  --prism-quote-bg: #ede5d3;
+  --prism-border: #d8ccb5;
+  --prism-border-strong: #c6b79c;
+  --prism-ink: #1f242d;
+  --prism-ink-muted: #5a5347;
+  --prism-heading: #1a2744;
+  --prism-accent-line: #8c7a6b;
+  --prism-card-shadow: 0 2px 10px -2px rgba(68, 52, 26, 0.06), 0 1px 3px rgba(68, 52, 26, 0.04);
+  --prism-card-shadow-hover: 0 8px 24px -6px rgba(68, 52, 26, 0.11), 0 2px 6px rgba(68, 52, 26, 0.05);
+  --prism-glass-bg: rgba(20, 32, 56, 0.88);
+  --prism-glass-subnav: rgba(241, 234, 220, 0.88);
+}
+
+[data-theme="studio"] {
+  --prism-bg: #ffffff;
+  --prism-surface: #ffffff;
+  --prism-surface-subtle: #f8fafc;
+  --prism-surface-muted: #f1f5f9;
+  --prism-quote-bg: #f8fafc;
+  --prism-border: #e2e8f0;
+  --prism-border-strong: #cbd5e1;
+  --prism-ink: #0f172a;
+  --prism-ink-muted: #475569;
+  --prism-heading: #0f172a;
+  --prism-accent-line: #3b82f6;
+  --prism-card-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 14px -4px rgba(15, 23, 42, 0.05);
+  --prism-card-shadow-hover: 0 10px 26px -6px rgba(15, 23, 42, 0.09);
+  --prism-glass-bg: rgba(15, 23, 42, 0.9);
+  --prism-glass-subnav: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="aurora"] {
+  --prism-bg: #0b111e;
+  --prism-surface: #121b2d;
+  --prism-surface-subtle: #162238;
+  --prism-surface-muted: #1b2842;
+  --prism-quote-bg: #17233b;
+  --prism-border: #253452;
+  --prism-border-strong: #33466b;
+  --prism-ink: #e2e8f0;
+  --prism-ink-muted: #94a3b8;
+  --prism-heading: #f8fafc;
+  --prism-accent-line: #60a5fa;
+  --prism-card-shadow: 0 4px 20px -2px rgba(2, 6, 23, 0.45);
+  --prism-card-shadow-hover: 0 10px 30px -4px rgba(2, 6, 23, 0.65);
+  --prism-glass-bg: rgba(11, 17, 30, 0.84);
+  --prism-glass-subnav: rgba(18, 27, 45, 0.86);
+}
+
 html,
 body {
-  background-color: #faf8f5;
-  color: #1c222d;
+  background-color: var(--prism-bg);
+  color: var(--prism-ink);
   font-family: var(--font-ibm-sans), -apple-system, BlinkMacSystemFont, sans-serif;
   scroll-behavior: smooth;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+.prism-shell {
+  background-color: var(--prism-bg);
+  color: var(--prism-ink);
+  transition: background-color 220ms ease, color 220ms ease;
+}
+
+.prism-glass-bar {
+  background: var(--prism-glass-bg);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.prism-glass-subnav {
+  background: var(--prism-glass-subnav);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border-bottom: 1px solid var(--prism-border);
+}
+
+.prism-editorial-card {
+  background-color: var(--prism-surface);
+  border-color: var(--prism-border);
+  box-shadow: var(--prism-card-shadow);
+  transition: box-shadow 220ms ease, border-color 220ms ease, transform 220ms ease, background-color 220ms ease;
+}
+
+.prism-editorial-card:hover {
+  box-shadow: var(--prism-card-shadow-hover);
+}
+
+.prism-quote-block {
+  background-color: var(--prism-quote-bg);
+  border-left: 3px solid var(--prism-accent-line);
+  color: var(--prism-ink);
+}
+
+.prism-section-banner {
+  background-color: var(--prism-surface-muted);
+  border-left: 4px solid var(--prism-heading);
+}
+
+/* Paper theme warm ivory surface harmonization */
+[data-theme="paper"] main .bg-white,
+[data-theme="paper"] [role="dialog"].bg-white,
+[data-theme="paper"] [role="dialog"] .bg-white {
+  background-color: var(--prism-surface) !important;
+}
+
+/* Studio pure cool-white surface harmonization */
+[data-theme="studio"] .bg-\[\#fcfaf6\],
+[data-theme="studio"] .bg-\[\#fcfbf8\],
+[data-theme="studio"] .bg-\[\#faf7f0\],
+[data-theme="studio"] .bg-\[\#fffdf8\],
+[data-theme="studio"] .bg-\[\#faf8f5\] {
+  background-color: #f8fafc !important;
+}
+
+[data-theme="studio"] .bg-\[\#f0ece2\],
+[data-theme="studio"] .bg-\[\#f3efe6\],
+[data-theme="studio"] .bg-\[\#efeae0\],
+[data-theme="studio"] .bg-\[\#e6dfd1\],
+[data-theme="studio"] .bg-\[\#e6dfd1\]\/80 {
+  background-color: #f1f5f9 !important;
+}
+
+[data-theme="studio"] .border-\[\#ddd6c7\],
+[data-theme="studio"] .border-\[\#e5dfd2\],
+[data-theme="studio"] .border-\[\#ebe5d8\],
+[data-theme="studio"] .border-\[\#e8e1d3\] {
+  border-color: #e2e8f0 !important;
+}
+
+[data-theme="studio"] .text-\[\#1a2744\] {
+  color: #0f172a !important;
+}
+
+/* Aurora Dark surface harmonization for child components */
+[data-theme="aurora"] main .bg-white,
+[data-theme="aurora"] [role="dialog"].bg-white,
+[data-theme="aurora"] [role="dialog"] .bg-white,
+[data-theme="aurora"] [role="dialog"].bg-\[\#faf8f5\] {
+  background-color: var(--prism-surface) !important;
+}
+
+[data-theme="aurora"] [data-testid="ai-qa-drawer"] .bg-white {
+  background-color: var(--prism-surface-subtle) !important;
+}
+
+[data-theme="aurora"] .bg-white\/90,
+[data-theme="aurora"] .bg-white\/80,
+[data-theme="aurora"] .bg-white\/60 {
+  background-color: rgba(22, 34, 56, 0.92) !important;
+}
+
+[data-theme="aurora"] .bg-\[\#fcfaf6\],
+[data-theme="aurora"] .bg-\[\#fcfbf8\],
+[data-theme="aurora"] .bg-\[\#faf7f0\],
+[data-theme="aurora"] .bg-\[\#fffdf8\],
+[data-theme="aurora"] .bg-\[\#f3efe6\]\/70 {
+  background-color: var(--prism-surface-subtle) !important;
+}
+
+[data-theme="aurora"] .bg-\[\#f0ece2\],
+[data-theme="aurora"] .bg-\[\#f3efe6\],
+[data-theme="aurora"] .bg-\[\#efeae0\],
+[data-theme="aurora"] .bg-\[\#ede7da\],
+[data-theme="aurora"] .bg-\[\#e6dfd1\],
+[data-theme="aurora"] .bg-\[\#e6dfd1\]\/80,
+[data-theme="aurora"] .bg-slate-50,
+[data-theme="aurora"] .bg-slate-100,
+[data-theme="aurora"] .bg-slate-200,
+[data-theme="aurora"] .bg-slate-200\/80 {
+  background-color: var(--prism-surface-muted) !important;
+}
+
+[data-theme="aurora"] .border-\[\#ddd6c7\],
+[data-theme="aurora"] .border-\[\#e5dfd2\],
+[data-theme="aurora"] .border-\[\#ebe5d8\],
+[data-theme="aurora"] .border-\[\#e8e1d3\],
+[data-theme="aurora"] .border-\[\#ede6d8\],
+[data-theme="aurora"] .border-\[\#efe9dc\],
+[data-theme="aurora"] .border-\[\#c7bea9\],
+[data-theme="aurora"] .border-\[\#d8d0bf\],
+[data-theme="aurora"] .border-slate-200,
+[data-theme="aurora"] .border-slate-300 {
+  border-color: var(--prism-border) !important;
+}
+
+[data-theme="aurora"] .text-\[\#1c222d\],
+[data-theme="aurora"] .text-\[\#1f242d\],
+[data-theme="aurora"] .text-\[\#22201d\],
+[data-theme="aurora"] .text-\[\#292524\],
+[data-theme="aurora"] .text-slate-900,
+[data-theme="aurora"] .text-slate-800 {
+  color: #e2e8f0 !important;
+}
+
+[data-theme="aurora"] .text-\[\#1a2744\] {
+  color: #93c5fd !important;
+}
+
+/* Solid bright amber pills must keep dark ink in Aurora Dark */
+[data-theme="aurora"] .bg-amber-300.text-\[\#1a2744\],
+[data-theme="aurora"] .bg-amber-400.text-\[\#1a2744\],
+[data-theme="aurora"] .bg-amber-200.text-\[\#1a2744\],
+[data-theme="aurora"] .bg-amber-200\/80.text-\[\#1a2744\] {
+  color: #0f172a !important;
+}
+
+[data-theme="aurora"] .text-\[\#565047\],
+[data-theme="aurora"] .text-slate-700,
+[data-theme="aurora"] .text-slate-600,
+[data-theme="aurora"] .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+
+[data-theme="aurora"] .bg-rose-50\/70,
+[data-theme="aurora"] .bg-rose-50\/85,
+[data-theme="aurora"] .bg-rose-50,
+[data-theme="aurora"] .bg-rose-100 {
+  background-color: rgba(159, 18, 57, 0.34) !important;
+  border-color: rgba(251, 113, 133, 0.35) !important;
+}
+
+[data-theme="aurora"] .bg-emerald-50\/70,
+[data-theme="aurora"] .bg-emerald-50,
+[data-theme="aurora"] .bg-emerald-100 {
+  background-color: rgba(6, 95, 70, 0.42) !important;
+  border-color: rgba(52, 211, 153, 0.35) !important;
+}
+
+[data-theme="aurora"] .bg-amber-50\/90,
+[data-theme="aurora"] .bg-amber-50\/80,
+[data-theme="aurora"] .bg-amber-50\/70,
+[data-theme="aurora"] .bg-amber-100 {
+  background-color: rgba(146, 64, 14, 0.42) !important;
+  border-color: rgba(251, 191, 36, 0.35) !important;
+}
+
+[data-theme="aurora"] .bg-blue-50,
+[data-theme="aurora"] .bg-blue-100,
+[data-theme="aurora"] .bg-sky-50,
+[data-theme="aurora"] .bg-sky-100 {
+  background-color: rgba(30, 64, 175, 0.42) !important;
+  border-color: rgba(96, 165, 250, 0.35) !important;
+}
+
+[data-theme="aurora"] .bg-purple-50,
+[data-theme="aurora"] .bg-purple-100 {
+  background-color: rgba(107, 33, 168, 0.42) !important;
+  border-color: rgba(192, 132, 252, 0.35) !important;
+}
+
+/* Prose highlight bands in Aurora Dark */
+[data-theme="aurora"] .bg-amber-200\/70 {
+  background-color: rgba(217, 119, 6, 0.32) !important;
+  color: #fef3c7 !important;
+}
+
+[data-theme="aurora"] .bg-rose-200\/70 {
+  background-color: rgba(225, 29, 72, 0.32) !important;
+  color: #ffe4e6 !important;
+}
+
+[data-theme="aurora"] .bg-sky-200\/70 {
+  background-color: rgba(2, 132, 199, 0.32) !important;
+  color: #e0f2fe !important;
+}
+
+[data-theme="aurora"] .bg-emerald-200\/70 {
+  background-color: rgba(5, 150, 105, 0.32) !important;
+  color: #d1fae5 !important;
+}
+
+[data-theme="aurora"] .bg-purple-200\/70 {
+  background-color: rgba(147, 51, 234, 0.32) !important;
+  color: #f3e8ff !important;
+}
+
+[data-theme="aurora"] .text-rose-900,
+[data-theme="aurora"] .text-rose-950,
+[data-theme="aurora"] .text-rose-700 {
+  color: #fda4af !important;
+}
+
+[data-theme="aurora"] .text-emerald-900 {
+  color: #a7f3d0 !important;
+}
+
+[data-theme="aurora"] .text-amber-950,
+[data-theme="aurora"] .text-amber-900 {
+  color: #fde68a !important;
+}
+
+[data-theme="aurora"] .text-blue-900,
+[data-theme="aurora"] .text-blue-800,
+[data-theme="aurora"] .text-blue-700,
+[data-theme="aurora"] .text-sky-800 {
+  color: #93c5fd !important;
+}
+
+[data-theme="aurora"] .bg-\[\#1a2744\]\/10 {
+  background-color: rgba(147, 197, 253, 0.16) !important;
+}
+
+[data-theme="aurora"] .border-\[\#1a2744\],
+[data-theme="aurora"] .border-\[\#1a2744\]\/80,
+[data-theme="aurora"] .border-\[\#1a2744\]\/60,
+[data-theme="aurora"] .border-\[\#1a2744\]\/55,
+[data-theme="aurora"] .border-\[\#1a2744\]\/40,
+[data-theme="aurora"] .border-\[\#1a2744\]\/35 {
+  border-color: rgba(147, 197, 253, 0.45) !important;
+}
+
+[data-theme="aurora"] .text-purple-900 {
+  color: #e9d5ff !important;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.electron-drag {
+  -webkit-app-region: drag;
+}
+
+.electron-no-drag,
+.electron-no-drag button,
+.electron-no-drag a,
+.electron-no-drag input,
+.electron-no-drag select {
+  -webkit-app-region: no-drag;
+}
+
+@keyframes prism-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes prism-backdrop-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes prism-drawer-expand {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--prism-origin-dx, -14px), var(--prism-origin-dy, -10px), 0)
+      scale(var(--prism-origin-scale, 0.86));
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes prism-drawer-collapse {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(var(--prism-origin-dx, -10px), var(--prism-origin-dy, -6px), 0)
+      scale(var(--prism-origin-scale, 0.92));
+  }
+}
+
+@keyframes prism-drawer-right-in {
+  from {
+    opacity: 0;
+    transform: translate3d(28px, 0, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.prism-backdrop-enter {
+  animation: prism-backdrop-in 220ms ease-out both;
+}
+
+.prism-backdrop-exit {
+  animation: prism-backdrop-out 180ms ease-in both;
+}
+
+.prism-library-enter {
+  transform-origin: top left;
+  animation: prism-drawer-expand 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.prism-library-exit {
+  transform-origin: top left;
+  animation: prism-drawer-collapse 180ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.prism-drawer-right-enter {
+  transform-origin: center right;
+  animation: prism-drawer-right-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prism-backdrop-enter,
+  .prism-backdrop-exit,
+  .prism-library-enter,
+  .prism-library-exit,
+  .prism-drawer-right-enter {
+    animation-duration: 1ms !important;
+  }
 }

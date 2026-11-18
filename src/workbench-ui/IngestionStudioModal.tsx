@@ -1,39 +1,48 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { AiStatus, resolveAnalyzeAiState } from "@/components/ui/ai-status";
+import {
+  getPanelGlassTextClasses,
+  getTopbarGlassStyle,
+  PanelGlassHeader,
+  TopbarGlassBackdrop,
+} from "@/components/ui/fluid-orb";
+import type { WorkbenchThemeMode } from "@/store/workbench-store";
 import type { WorkbenchDocument } from "@/core/contracts/document-ast";
 import type { RawSourcePayload } from "@/core/contracts/mode-plugin";
-import type { AnalysisStreamEvent } from "@/core/engine/chunk-orchestrator";
 import type { LLMConfig } from "@/core/engine/llm-adapters";
 import { defaultPluginRegistry } from "@/plugins";
+import {
+  detectOmniSource,
+  filesToSourcePayload,
+  runStreamedAnalysis,
+} from "./analyze-client";
 
 interface IngestionStudioModalProps {
   open: boolean;
   llmConfig: LLMConfig;
+  themeMode?: WorkbenchThemeMode;
   onClose: () => void;
   onCreated: (doc: WorkbenchDocument) => void;
 }
 
 type InputTab = "text-or-file" | "remote-url" | "agent-search";
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-}
-
 export function IngestionStudioModal({
   open,
   llmConfig,
+  themeMode = "paper",
   onClose,
   onCreated,
 }: IngestionStudioModalProps) {
   const plugins = useMemo(() => defaultPluginRegistry.list(), []);
+  const videoPlugin = useMemo(
+    () => plugins.find((p) => p.inputConfig.acceptedFileTypes?.includes(".srt")),
+    [plugins]
+  );
   const [selectedModeId, setSelectedModeId] = useState<string>(plugins[0]?.id ?? "");
+  const [autoSwitchedHint, setAutoSwitchedHint] = useState("");
   const [activeTab, setActiveTab] = useState<InputTab>("text-or-file");
   const [title, setTitle] = useState("");
   const [textInput, setTextInput] = useState("");
@@ -52,21 +61,39 @@ export function IngestionStudioModal({
   const [progressPct, setProgressPct] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
 
+  const headerCls = getPanelGlassTextClasses(themeMode);
+
   if (!open && !backgroundStreaming) return null;
 
   if (!open && backgroundStreaming) {
     return (
-      <div className="fixed bottom-4 left-4 z-50 w-80 rounded-xl bg-[#1a2744] text-white border border-slate-600 shadow-2xl p-3.5 text-xs">
-        <div className="flex items-center justify-between gap-2 mb-1.5 font-mono">
-          <span className="truncate font-semibold">[后台流式生成中]</span>
-          <span>{progressPct}%</span>
-        </div>
-        <div className="text-[11px] text-slate-200 truncate mb-2">{progressText}</div>
-        <div className="w-full h-1.5 bg-white/15 rounded-full overflow-hidden">
+      <div
+        style={getTopbarGlassStyle(themeMode)}
+        className={`fixed bottom-4 left-4 z-50 w-80 rounded-2xl border shadow-2xl p-3.5 text-xs overflow-hidden ${
+          headerCls.isDark
+            ? "border-sky-400/25 text-slate-100"
+            : "border-[#c6b79c]/60 text-[#1a2744]"
+        }`}
+      >
+        <TopbarGlassBackdrop themeMode={themeMode} />
+        <div className="relative z-10">
+          <div className="flex items-center justify-between gap-2 mb-1.5 font-mono">
+            <span className={`truncate font-semibold ${headerCls.heading}`}>[后台流式生成中]</span>
+            <span>{progressPct}%</span>
+          </div>
+          <div className={`text-[11px] truncate mb-2 ${headerCls.subtitle}`}>{progressText}</div>
           <div
-            className="h-full bg-amber-300 transition-all duration-300"
-            style={{ width: `${progressPct}%` }}
-          />
+            className={`w-full h-1.5 rounded-full overflow-hidden ${
+              headerCls.isDark ? "bg-white/15" : "bg-[#1a2744]/12"
+            }`}
+          >
+            <div
+              className={`h-full transition-all duration-300 ${
+                headerCls.isDark ? "bg-amber-300" : "bg-[#1a2744]"
+              }`}
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
         </div>
       </div>
     );
@@ -78,47 +105,37 @@ export function IngestionStudioModal({
   );
   const hasSearchInput = Boolean(activePlugin.inputConfig.supportsAgentSearch);
 
+  const maybeAutoSwitchVideoMode = (rawValue: string) => {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      setAutoSwitchedHint("");
+      return;
+    }
+    if (!videoPlugin || selectedModeId !== plugins[0]?.id) return;
+    const detected = detectOmniSource(trimmed, plugins);
+    if (detected.suggestedModeId === videoPlugin.id && detected.hint) {
+      setSelectedModeId(videoPlugin.id);
+      setAutoSwitchedHint(detected.hint);
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     setErrorMsg("");
 
-    const files = Array.from(fileList);
-    if (files.length === 1 && files[0].name.toLowerCase().endsWith(".pdf")) {
-      const buf = await files[0].arrayBuffer();
-      const base64 = arrayBufferToBase64(buf);
-      setUploadedPayload({
-        kind: "pdf-base64",
-        content: base64,
-        fileName: files[0].name,
-      });
-      setUploadedLabel(`已加载 PDF：${files[0].name} (${Math.ceil(files[0].size / 1024)} KB)`);
-      if (!title.trim()) setTitle(files[0].name.replace(/\.pdf$/i, ""));
-      return;
+    const result = await filesToSourcePayload(
+      Array.from(fileList),
+      Boolean(activePlugin.inputConfig.supportsRepoUrl)
+    );
+    if (result.payload) {
+      setUploadedPayload(result.payload);
+    } else {
+      setTextInput(result.textContent ?? "");
+      setUploadedPayload(null);
     }
-
-    if (activePlugin.inputConfig.supportsRepoUrl) {
-      const loadedFiles = await Promise.all(
-        files.map(async (f) => ({
-          path: f.webkitRelativePath || f.name,
-          content: await f.text(),
-        }))
-      );
-      setUploadedPayload({
-        kind: "repo-files",
-        content: "",
-        files: loadedFiles,
-      });
-      setUploadedLabel(`已读取 ${loadedFiles.length} 个源码文件`);
-      if (!title.trim()) setTitle(files[0].name.replace(/\.[^.]+$/, ""));
-      return;
-    }
-
-    const combinedText = (await Promise.all(files.map((f) => f.text()))).join("\n\n");
-    setTextInput(combinedText);
-    setUploadedPayload(null);
-    setUploadedLabel(`已导入文件文本：${files.map((f) => f.name).join(", ")}`);
-    if (!title.trim()) setTitle(files[0].name.replace(/\.[^.]+$/, ""));
+    setUploadedLabel(result.label);
+    if (!title.trim() && result.suggestedTitle) setTitle(result.suggestedTitle);
   };
 
   const buildSubmissionPayload = (): RawSourcePayload | null => {
@@ -186,87 +203,22 @@ export function IngestionStudioModal({
     setIsRunning(true);
     setHasLivePreview(false);
     setBackgroundStreaming(false);
-    setProgressPct(8);
-    setProgressText(
-      payload.kind === "search-query"
-        ? "正在启动 AI 联网工具检索源资料..."
-        : "正在读取与切片清洗源内容..."
-    );
 
     try {
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modeId: activePlugin.id,
-          title: title.trim() || undefined,
-          payload,
-          llmConfig: llmConfig.apiKey.trim() ? llmConfig : undefined,
-        }),
+      const completedDoc = await runStreamedAnalysis({
+        modeId: activePlugin.id,
+        title: title.trim() || undefined,
+        payload,
+        llmConfig,
+        onProgress: (pct, text) => {
+          setProgressPct(pct);
+          setProgressText(text);
+        },
+        onPartialDocument: (partial) => {
+          onCreated(partial);
+          setHasLivePreview(true);
+        },
       });
-
-      if (!response.ok || !response.body) {
-        const errBody = await response.text();
-        throw new Error(errBody || `请求失败 (${response.status})`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let completedDoc: WorkbenchDocument | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          const event = JSON.parse(trimmed) as AnalysisStreamEvent | { type: "error"; message: string };
-          if (event.type === "status") {
-            setProgressText(event.message);
-            setProgressPct(event.progress);
-          } else if (event.type === "source-ready") {
-            setProgressText(`已清洗提取 ${event.totalUnits} 个单元，开始深度解析...`);
-            setProgressPct(22);
-          } else if (event.type === "top-model") {
-            setProgressText("已构建顶层心智模型与架构图...");
-            setProgressPct(45);
-            if (event.partialDocument) {
-              onCreated(event.partialDocument);
-              setHasLivePreview(true);
-            }
-          } else if (event.type === "unit-batch") {
-            setProgressText(`已完成批注批次 ${event.batchIndex}/${event.totalBatches}...`);
-            setProgressPct(
-              50 + Math.round(((event.batchIndex + 1) / Math.max(1, event.totalBatches)) * 32)
-            );
-            if (event.partialDocument) {
-              onCreated(event.partialDocument);
-              setHasLivePreview(true);
-            }
-          } else if (event.type === "bottom") {
-            setProgressText("已生成底部实战与复盘军火库...");
-            setProgressPct(92);
-            if (event.partialDocument) {
-              onCreated(event.partialDocument);
-              setHasLivePreview(true);
-            }
-          } else if (event.type === "error") {
-            throw new Error(event.message);
-          } else if (event.type === "complete") {
-            completedDoc = event.document;
-            setProgressPct(100);
-          }
-        }
-      }
-
-      if (!completedDoc) {
-        throw new Error("分析流已结束但未收到完整文档输出，请重试。");
-      }
 
       onCreated(completedDoc);
       onClose();
@@ -288,27 +240,40 @@ export function IngestionStudioModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/55">
-      <div className="w-full max-w-2xl rounded-xl bg-[#faf8f5] border border-[#ddd6c7] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
-        <div className="px-5 py-3.5 bg-[#1a2744] text-white flex items-center justify-between shrink-0">
-          <div>
-            <h2 className="font-serif text-lg font-semibold">新建精读 / 拆解工作台</h2>
-            <p className="text-xs text-slate-300">
-              当前模式引擎：
-              {llmConfig.apiKey.trim()
-                ? ` 在线大模型 (${llmConfig.provider} · ${llmConfig.model})`
-                : " 离线启发式引擎（无 API Key 亦可立刻体验）"}
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled={isRunning}
-            onClick={onClose}
-            className="font-mono text-xs px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 cursor-pointer disabled:opacity-50"
-          >
-            [关闭]
-          </button>
-        </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[1px]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="新建精读与拆解工作台"
+        className="w-full max-w-2xl rounded-2xl bg-[#faf8f5] border border-[#ddd6c7] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+      >
+        <PanelGlassHeader
+          testId="studio-modal-header"
+          themeMode={themeMode}
+          left={
+            <div>
+              <h2 className={`font-serif text-lg font-semibold ${headerCls.heading}`}>
+                新建精读 / 拆解工作台
+              </h2>
+              <p className={`text-xs ${headerCls.subtitle}`}>
+                当前模式引擎：
+                {llmConfig.apiKey.trim()
+                  ? ` 在线大模型 (${llmConfig.provider} · ${llmConfig.model})`
+                  : " 离线启发式引擎（无 API Key 亦可立刻体验）"}
+              </p>
+            </div>
+          }
+          right={
+            <button
+              type="button"
+              disabled={isRunning}
+              onClick={onClose}
+              className={`font-mono text-xs px-3 py-1 rounded-full cursor-pointer disabled:opacity-50 transition-colors whitespace-nowrap ${headerCls.ghostBtn}`}
+            >
+              关闭
+            </button>
+          }
+        />
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto text-sm">
           <div>
@@ -325,6 +290,7 @@ export function IngestionStudioModal({
                     disabled={isRunning}
                     onClick={() => {
                       setSelectedModeId(plugin.id);
+                      setAutoSwitchedHint("");
                       setUploadedPayload(null);
                       setUploadedLabel("");
                       setRemoteUrl("");
@@ -344,6 +310,11 @@ export function IngestionStudioModal({
               })}
             </div>
             <p className="text-xs text-slate-600 mt-1.5">{activePlugin.description}</p>
+            {autoSwitchedHint && (
+              <p className="text-xs font-mono text-amber-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1 mt-1.5">
+                {autoSwitchedHint}
+              </p>
+            )}
           </div>
 
           <div>
@@ -434,8 +405,10 @@ export function IngestionStudioModal({
                   <textarea
                     value={textInput}
                     onChange={(e) => {
-                      setTextInput(e.target.value);
+                      const nextVal = e.target.value;
+                      setTextInput(nextVal);
                       setUploadedPayload(null);
+                      maybeAutoSwitchVideoMode(nextVal);
                     }}
                     disabled={isRunning}
                     rows={6}
@@ -454,7 +427,11 @@ export function IngestionStudioModal({
                 <input
                   type="text"
                   value={remoteUrl}
-                  onChange={(e) => setRemoteUrl(e.target.value)}
+                  onChange={(e) => {
+                    const nextVal = e.target.value;
+                    setRemoteUrl(nextVal);
+                    maybeAutoSwitchVideoMode(nextVal);
+                  }}
                   disabled={isRunning}
                   placeholder={activePlugin.inputConfig.remoteUrlPlaceholder || "https://..."}
                   className="w-full rounded-md border border-[#ddd6c7] bg-[#fcfbf8] px-3 py-2 font-mono text-xs"
@@ -552,10 +529,14 @@ export function IngestionStudioModal({
           </div>
 
           {isRunning && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div className="flex items-center justify-between text-xs font-mono text-blue-900 mb-1.5">
-                <span className="truncate pr-2">{progressText}</span>
-                <span>{progressPct}%</span>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <AiStatus
+                  state={resolveAnalyzeAiState(progressPct)}
+                  detail={progressText}
+                  className="h-7 text-[12.5px]"
+                />
+                <span className="text-xs font-mono text-blue-900 shrink-0">{progressPct}%</span>
               </div>
               <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden">
                 <div

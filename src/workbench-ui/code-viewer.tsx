@@ -1,19 +1,34 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
+import {
+  CodeBlock,
+  PURRPARSE_CODE_ACCENTS,
+  type CodeBlockLineContext,
+  usePurrParseTheme,
+} from "@/components/ui/code-block";
 import type {
   ColorSlot,
   DimensionSpec,
   HighlightDimensionKey,
   HighlightSpan,
 } from "@/core/contracts/document-ast";
+import { cn } from "@/lib/utils";
 
-const HIGHLIGHT_CLASSES: Record<ColorSlot, string> = {
-  yellow: "bg-amber-300/35 text-inherit border-b border-amber-500/70",
+const LIGHT_HIGHLIGHT_CLASSES: Record<ColorSlot, string> = {
+  yellow: "bg-amber-300/35 text-inherit border-b border-amber-500/80",
   red: "bg-rose-400/25 text-inherit border-b-2 border-dashed border-rose-500 cursor-help",
-  blue: "bg-blue-400/25 text-inherit border-b border-blue-500/70",
-  green: "bg-emerald-400/25 text-inherit border-b border-emerald-500/70",
-  purple: "bg-purple-400/25 text-inherit border-b border-purple-500/70",
+  blue: "bg-sky-300/35 text-inherit border-b border-sky-500/75",
+  green: "bg-emerald-300/35 text-inherit border-b border-emerald-500/75",
+  purple: "bg-purple-300/35 text-inherit border-b border-purple-500/75",
+};
+
+const DARK_HIGHLIGHT_CLASSES: Record<ColorSlot, string> = {
+  yellow: "bg-amber-400/22 text-inherit border-b border-amber-400/80",
+  red: "bg-rose-500/25 text-inherit border-b-2 border-dashed border-rose-400 cursor-help",
+  blue: "bg-sky-400/22 text-inherit border-b border-sky-400/80",
+  green: "bg-emerald-400/22 text-inherit border-b border-emerald-400/80",
+  purple: "bg-purple-400/25 text-inherit border-b border-purple-400/80",
 };
 
 interface CodeViewerProps {
@@ -27,47 +42,46 @@ interface CodeViewerProps {
   onLeaveTooltip: () => void;
 }
 
-interface HighlightSegment {
-  text: string;
-  span?: HighlightSpan;
+interface MatchPos {
+  start: number;
+  end: number;
+  span: HighlightSpan;
 }
 
-function segmentTextByHighlights(text: string, highlights: HighlightSpan[]): HighlightSegment[] {
-  if (!highlights || highlights.length === 0) return [{ text }];
-
-  interface MatchPos {
-    start: number;
-    end: number;
-    span: HighlightSpan;
-  }
+function findHighlightMatches(text: string, highlights: HighlightSpan[]): MatchPos[] {
+  if (!highlights || highlights.length === 0) return [];
 
   const matches: MatchPos[] = [];
   for (const span of highlights) {
     if (!span.text) continue;
     const idx = text.indexOf(span.text);
     if (idx === -1) continue;
-    const overlaps = matches.some((m) => !(idx + span.text.length <= m.start || idx >= m.end));
+    const end = idx + span.text.length;
+    const overlaps = matches.some((m) => !(end <= m.start || idx >= m.end));
     if (!overlaps) {
-      matches.push({ start: idx, end: idx + span.text.length, span });
+      matches.push({ start: idx, end, span });
     }
   }
-
   matches.sort((a, b) => a.start - b.start);
-  const out: HighlightSegment[] = [];
+  return matches;
+}
+
+interface LineBound {
+  start: number;
+  end: number;
+}
+
+function computeLineBounds(text: string): LineBound[] {
+  const lines = text.split("\n");
+  const bounds: LineBound[] = [];
   let cursor = 0;
-
-  for (const m of matches) {
-    if (m.start > cursor) {
-      out.push({ text: text.slice(cursor, m.start) });
-    }
-    out.push({ text: text.slice(m.start, m.end), span: m.span });
-    cursor = m.end;
+  for (const line of lines) {
+    const start = cursor;
+    const end = start + line.length;
+    bounds.push({ start, end });
+    cursor = end + 1;
   }
-
-  if (cursor < text.length) {
-    out.push({ text: text.slice(cursor) });
-  }
-  return out;
+  return bounds;
 }
 
 export function CodeViewer({
@@ -80,8 +94,15 @@ export function CodeViewer({
   onHoverTooltip,
   onLeaveTooltip,
 }: CodeViewerProps) {
-  const [shikiHtml, setShikiHtml] = useState<string | null>(null);
-  const [showPlainHighlighted, setShowPlainHighlighted] = useState(highlights.length > 0);
+  const [showDimHighlights, setShowDimHighlights] = useState(highlights.length > 0);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const pageTheme = usePurrParseTheme(viewerRef);
+  const isDark = pageTheme === "aurora";
+
+  const trimmedCode = useMemo(() => {
+    const source = typeof code === "string" ? code : String(code ?? "");
+    return source.replace(/^\n+/, "").trimEnd();
+  }, [code]);
 
   const dimSlotMap = useMemo(() => {
     const map: Record<string, ColorSlot> = {};
@@ -91,85 +112,231 @@ export function CodeViewer({
     return map;
   }, [dimensions]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function highlightWithShiki() {
-      try {
-        const { codeToHtml } = await import("shiki");
-        const safeLang =
-          ["go", "typescript", "tsx", "javascript", "jsx", "python", "rust", "lua", "sql", "bash", "yaml", "json"].includes(
-            language.toLowerCase()
-          )
-            ? language.toLowerCase()
-            : "typescript";
-        const html = await codeToHtml(code, {
-          lang: safeLang,
-          theme: "github-dark",
-        });
-        if (!cancelled) setShikiHtml(html);
-      } catch {
-        if (!cancelled) setShikiHtml(null);
+  const matches = useMemo(
+    () => findHighlightMatches(trimmedCode, highlights),
+    [trimmedCode, highlights]
+  );
+
+  const lineBounds = useMemo(() => computeLineBounds(trimmedCode), [trimmedCode]);
+
+  const highlightLines = useMemo(() => {
+    if (!showDimHighlights || matches.length === 0) return undefined;
+    const lineSet = new Set<number>();
+    for (let i = 0; i < lineBounds.length; i++) {
+      const bound = lineBounds[i];
+      const hasMatch = matches.some(
+        (m) =>
+          (activeDimFilter === null || m.span.dim === activeDimFilter) &&
+          m.end > bound.start &&
+          m.start < bound.end
+      );
+      if (hasMatch) {
+        lineSet.add(i + 1);
       }
     }
-    void highlightWithShiki();
-    return () => {
-      cancelled = true;
-    };
-  }, [code, language]);
+    return lineSet.size > 0 ? Array.from(lineSet) : undefined;
+  }, [showDimHighlights, matches, lineBounds, activeDimFilter]);
 
-  const segments = useMemo(() => segmentTextByHighlights(code, highlights), [code, highlights]);
+  const highlightPalette = isDark ? DARK_HIGHLIGHT_CLASSES : LIGHT_HIGHLIGHT_CLASSES;
+
+  const renderLineContent = useMemo(() => {
+    if (!showDimHighlights || matches.length === 0) return undefined;
+
+    return ({ line, lineIndex, getTokenProps }: CodeBlockLineContext) => {
+      const bound = lineBounds[lineIndex];
+      if (!bound) {
+        return line.map((token, key) => <span key={key} {...getTokenProps({ token })} />);
+      }
+
+      const lineMatches = matches.filter(
+        (m) => m.end > bound.start && m.start < bound.end
+      );
+      if (lineMatches.length === 0) {
+        return line.map((token, key) => <span key={key} {...getTokenProps({ token })} />);
+      }
+
+      interface TokenPiece {
+        key: string;
+        node: React.ReactNode;
+        match: MatchPos | null;
+      }
+
+      const pieces: TokenPiece[] = [];
+      let tokOffset = bound.start;
+
+      line.forEach((token, key) => {
+        const tokText = token.content;
+        const tokenProps = getTokenProps({ token });
+        if (!tokText) {
+          pieces.push({
+            key: `empty-${key}`,
+            node: <span key={`empty-${key}`} {...tokenProps} />,
+            match: null,
+          });
+          return;
+        }
+
+        const tokStart = tokOffset;
+        const tokEnd = tokStart + tokText.length;
+        tokOffset = tokEnd;
+
+        const overlaps = lineMatches.filter((m) => m.end > tokStart && m.start < tokEnd);
+        if (overlaps.length === 0) {
+          pieces.push({
+            key: `tok-${key}`,
+            node: <span key={`tok-${key}`} {...tokenProps} />,
+            match: null,
+          });
+          return;
+        }
+
+        let sliceCursor = tokStart;
+        const { children: _ignoredChildren, className: tokenCls, ...restTokenProps } = tokenProps;
+
+        overlaps.forEach((match, mIdx) => {
+          const ovStart = Math.max(tokStart, match.start);
+          const ovEnd = Math.min(tokEnd, match.end);
+
+          if (ovStart > sliceCursor) {
+            const plainPart = tokText.slice(sliceCursor - tokStart, ovStart - tokStart);
+            const pieceKey = `tok-${key}-p-${mIdx}`;
+            pieces.push({
+              key: pieceKey,
+              node: (
+                <span key={pieceKey} className={tokenCls} {...restTokenProps}>
+                  {plainPart}
+                </span>
+              ),
+              match: null,
+            });
+          }
+
+          if (ovEnd > ovStart) {
+            const hlPart = tokText.slice(ovStart - tokStart, ovEnd - tokStart);
+            const pieceKey = `tok-${key}-h-${mIdx}`;
+            pieces.push({
+              key: pieceKey,
+              node: (
+                <span key={pieceKey} className={tokenCls} {...restTokenProps}>
+                  {hlPart}
+                </span>
+              ),
+              match,
+            });
+          }
+
+          sliceCursor = Math.max(sliceCursor, ovEnd);
+        });
+
+        if (sliceCursor < tokEnd) {
+          const tailPart = tokText.slice(sliceCursor - tokStart);
+          const pieceKey = `tok-${key}-tail`;
+          pieces.push({
+            key: pieceKey,
+            node: (
+              <span key={pieceKey} className={tokenCls} {...restTokenProps}>
+                {tailPart}
+              </span>
+            ),
+            match: null,
+          });
+        }
+      });
+
+      const grouped: React.ReactNode[] = [];
+      let idx = 0;
+      while (idx < pieces.length) {
+        const current = pieces[idx];
+        if (!current.match) {
+          grouped.push(current.node);
+          idx += 1;
+          continue;
+        }
+
+        const activeMatch = current.match;
+        const groupNodes: React.ReactNode[] = [current.node];
+        let nextIdx = idx + 1;
+        while (nextIdx < pieces.length && pieces[nextIdx].match === activeMatch) {
+          groupNodes.push(pieces[nextIdx].node);
+          nextIdx += 1;
+        }
+
+        const dim = activeMatch.span.dim;
+        const isDimmedOut = activeDimFilter !== null && activeDimFilter !== dim;
+        const slot = dimSlotMap[dim] ?? "yellow";
+        const hlClass = isDimmedOut ? "opacity-55" : highlightPalette[slot];
+
+        grouped.push(
+          <span
+            key={`hl-group-${idx}`}
+            data-highlight-dim={dim}
+            className={cn("rounded-[3px] py-[1px] transition-opacity", hlClass)}
+            onMouseMove={(e) => {
+              if (activeMatch.span.tooltip) {
+                onHoverTooltip(activeMatch.span.tooltip, e.clientX, e.clientY);
+              }
+            }}
+            onMouseLeave={onLeaveTooltip}
+          >
+            {groupNodes}
+          </span>
+        );
+
+        idx = nextIdx;
+      }
+
+      return grouped;
+    };
+  }, [
+    showDimHighlights,
+    matches,
+    lineBounds,
+    activeDimFilter,
+    dimSlotMap,
+    highlightPalette,
+    onHoverTooltip,
+    onLeaveTooltip,
+  ]);
+
+  const langBadge = (language || "code").toUpperCase();
 
   return (
-    <div className="rounded-lg border border-slate-700/80 bg-[#0d1117] overflow-hidden text-slate-100">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#161b22] border-b border-slate-700/80 text-[11px] font-mono text-slate-300">
-        <span className="truncate">{filePath || `source.${language}`}</span>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="uppercase text-slate-400">{language}</span>
-          {shikiHtml && highlights.length > 0 && (
+    <CodeBlock
+      ref={viewerRef}
+      data-testid="code-viewer-block"
+      code={trimmedCode}
+      language={language}
+      filename={filePath || `source.${language}`}
+      accent={PURRPARSE_CODE_ACCENTS[pageTheme]}
+      mode={isDark ? "dark" : "light"}
+      showLineNumbers={true}
+      showCopyButton={true}
+      highlightLines={highlightLines}
+      renderLineContent={renderLineContent}
+      className="rounded-xl shadow-xs"
+      headerActions={
+        <>
+          <span className="uppercase font-mono text-[10px] px-1.5 py-0.5 rounded bg-(--cb-hover-wash) text-(--cb-muted)">
+            {langBadge}
+          </span>
+          {highlights.length > 0 && (
             <button
               type="button"
-              onClick={() => setShowPlainHighlighted((v) => !v)}
-              className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[10px] text-slate-200 cursor-pointer"
+              data-testid="code-viewer-highlight-toggle"
+              onClick={() => setShowDimHighlights((v) => !v)}
+              className={cn(
+                "px-2 py-0.5 rounded-md border font-mono text-[10px] transition-colors cursor-pointer",
+                showDimHighlights
+                  ? "border-(--cb-accent)/45 bg-(--cb-accent)/12 text-(--cb-accent)"
+                  : "border-(--cb-border) bg-(--cb-hover-wash) text-(--cb-muted) hover:text-(--cb-plain)"
+              )}
+              title="切换是否在代码语法高亮之上叠加 5 维精读批注"
             >
-              {showPlainHighlighted ? "[切换语法着色视图]" : "[切换 5维批注高亮视图]"}
+              {showDimHighlights ? "5维批注 · 开" : "纯净语法 · 开"}
             </button>
           )}
-        </div>
-      </div>
-
-      {!showPlainHighlighted && shikiHtml ? (
-        <div
-          className="p-3.5 overflow-x-auto text-[12.5px] leading-relaxed font-mono [&>pre]:!bg-transparent [&>pre]:!m-0"
-          dangerouslySetInnerHTML={{ __html: shikiHtml }}
-        />
-      ) : (
-        <pre className="p-3.5 overflow-x-auto text-[12.5px] leading-relaxed font-mono m-0 whitespace-pre">
-          <code>
-            {segments.map((seg, i) => {
-              if (!seg.span) return <React.Fragment key={i}>{seg.text}</React.Fragment>;
-              const dim = seg.span.dim;
-              const isDimmedOut = activeDimFilter !== null && activeDimFilter !== dim;
-              const slot = dimSlotMap[dim] ?? "yellow";
-              const hlClass = isDimmedOut ? "opacity-55" : HIGHLIGHT_CLASSES[slot];
-
-              return (
-                <span
-                  key={i}
-                  className={`rounded px-0.5 transition-opacity ${hlClass}`}
-                  onMouseMove={(e) => {
-                    if (seg.span?.tooltip) {
-                      onHoverTooltip(seg.span.tooltip, e.clientX, e.clientY);
-                    }
-                  }}
-                  onMouseLeave={onLeaveTooltip}
-                >
-                  {seg.text}
-                </span>
-              );
-            })}
-          </code>
-        </pre>
-      )}
-    </div>
+        </>
+      }
+    />
   );
 }

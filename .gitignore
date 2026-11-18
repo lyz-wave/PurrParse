@@ -1,9 +1,11 @@
 # Dependencies & build outputs
 node_modules/
 .next/
-out/
-build/
+/out/
+/build/
 dist/
+dist-electron/
+electron-resources/
 coverage/
 tsconfig.tsbuildinfo
 
@@ -25,3 +27,10 @@ yarn-error.log*
 .pnpm-debug.log*
 .idea/
 .vscode/
+.v2t-cache/
+.impeccable/
+prism-showreel/out/
+prism-showreel/qa/
+prism-showreel/.showreel-editor/
+prism-showreel/assets/
+prism-showreel/audio/

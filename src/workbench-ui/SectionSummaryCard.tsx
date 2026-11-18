@@ -127,7 +127,7 @@ export function SectionSummaryCard({
             </div>
             <div className="bg-amber-50/70 border border-amber-200 rounded-lg p-3">
               <div className="font-mono text-[11px] font-semibold text-amber-900 mb-1">
-                [审稿人追问与证据评估]
+                [深度批判与盲点审视]
               </div>
               <p className="text-amber-950 text-xs leading-relaxed">
                 <MathText text={summary.reviewerCritique} />

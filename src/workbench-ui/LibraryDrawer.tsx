@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type {
   LibraryTaxonomyMeta,
   UserAnnotationsState,
@@ -12,9 +12,28 @@ import {
   type DocumentLearningStats,
 } from "@/core/engine/library-organizer";
 import type { LLMConfig } from "@/core/engine/llm-adapters";
+import type { WorkbenchThemeMode } from "@/store/workbench-store";
+import {
+  getPanelGlassTextClasses,
+  PanelGlassHeader,
+} from "@/components/ui/fluid-orb";
 
 type GroupMode = "domain" | "stage" | "paradigm" | "flat";
 type SortMode = "urgency" | "mastery_asc" | "recent";
+
+interface ContextMenuState {
+  docId: string;
+  pinned: boolean;
+  x: number;
+  y: number;
+}
+
+export interface LibraryOriginRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
 
 interface LibraryDrawerProps {
   open: boolean;
@@ -22,10 +41,11 @@ interface LibraryDrawerProps {
   activeDocumentId: string;
   annotationsByDocId?: Record<string, UserAnnotationsState>;
   llmConfig?: LLMConfig;
+  themeMode?: WorkbenchThemeMode;
+  originRect?: LibraryOriginRect | null;
   onClose: () => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
-  onResetDemos: () => void;
   onAutoOrganize?: (
     overridesByDocId?: Record<string, Partial<LibraryTaxonomyMeta>>
   ) => void;
@@ -46,10 +66,10 @@ const STAGE_ORDER: Record<DocumentLearningStats["stage"], number> = {
 };
 
 const STAGE_BADGE_CLS: Record<DocumentLearningStats["stage"], string> = {
-  struggling: "bg-rose-50 text-rose-800 border-rose-200",
-  review_due: "bg-amber-50 text-amber-900 border-amber-200",
-  unread: "bg-slate-100 text-slate-700 border-slate-200",
-  mastered: "bg-emerald-50 text-emerald-800 border-emerald-200",
+  struggling: "bg-rose-50 text-rose-700",
+  review_due: "bg-amber-50 text-amber-800",
+  unread: "bg-slate-100 text-slate-600",
+  mastered: "bg-emerald-50 text-emerald-700",
 };
 
 export function LibraryDrawer({
@@ -58,13 +78,16 @@ export function LibraryDrawer({
   activeDocumentId,
   annotationsByDocId = {},
   llmConfig,
+  themeMode = "paper",
+  originRect = null,
   onClose,
   onSelect,
   onDelete,
-  onResetDemos,
   onAutoOrganize,
   onUpdateDocMeta,
 }: LibraryDrawerProps) {
+  const [mounted, setMounted] = useState(open);
+  const [closing, setClosing] = useState(false);
   const [query, setQuery] = useState("");
   const [groupMode, setGroupMode] = useState<GroupMode>("domain");
   const [sortMode, setSortMode] = useState<SortMode>("urgency");
@@ -72,6 +95,53 @@ export function LibraryDrawer({
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [organizing, setOrganizing] = useState(false);
   const [organizeStatus, setOrganizeStatus] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setClosing(false);
+      return;
+    }
+    if (!mounted) return;
+    setClosing(true);
+    setContextMenu(null);
+    const timer = window.setTimeout(() => {
+      setMounted(false);
+      setClosing(false);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [open, mounted]);
+
+  useEffect(() => {
+    if (!open) {
+      setContextMenu(null);
+      return;
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (contextMenu) {
+          setContextMenu(null);
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, contextMenu, onClose]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [contextMenu]);
 
   const enrichedDocs = useMemo<EnrichedDocItem[]>(() => {
     return documents.map((doc) => ({
@@ -146,7 +216,26 @@ export function LibraryDrawer({
     return Array.from(groupsMap.entries()).map(([key, items]) => ({ key, items }));
   }, [filteredAndSorted, groupMode]);
 
-  if (!open) return null;
+  const drawerMotionStyle = useMemo<React.CSSProperties>(() => {
+    if (!originRect) return {};
+    const drawerW = 540;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 900;
+    const originCenterX = originRect.left + originRect.width / 2;
+    const originCenterY = originRect.top + originRect.height / 2;
+    const clampedDx = Math.max(-120, Math.min(240, Math.round(originCenterX - drawerW * 0.5)));
+    const clampedDy = Math.max(-140, Math.min(260, Math.round(originCenterY - vh * 0.45)));
+    return {
+      transformOrigin: `${Math.max(16, Math.min(drawerW - 16, Math.round(originCenterX)))}px ${Math.max(
+        16,
+        Math.min(vh - 16, Math.round(originCenterY))
+      )}px`,
+      ["--prism-origin-dx" as string]: `${clampedDx}px`,
+      ["--prism-origin-dy" as string]: `${clampedDy}px`,
+      ["--prism-origin-scale" as string]: "0.72",
+    };
+  }, [originRect]);
+
+  if (!mounted) return null;
 
   const handleAutoOrganize = async () => {
     if (organizing) return;
@@ -154,7 +243,6 @@ export function LibraryDrawer({
     setOrganizeStatus(null);
 
     try {
-      // Immediate local deterministic organize so UI updates in 0ms
       onAutoOrganize?.();
 
       if (llmConfig?.apiKey?.trim()) {
@@ -188,140 +276,204 @@ export function LibraryDrawer({
     }
   };
 
+  const openContextMenuAt = (
+    e: React.MouseEvent,
+    docId: string,
+    pinned: boolean
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const maxW = typeof window !== "undefined" ? window.innerWidth : 1280;
+    const maxH = typeof window !== "undefined" ? window.innerHeight : 800;
+    const menuWidth = 176;
+    const menuHeight = 160;
+    setContextMenu({
+      docId,
+      pinned,
+      x: Math.min(Math.max(12, e.clientX), Math.max(12, maxW - menuWidth - 12)),
+      y: Math.min(Math.max(12, e.clientY), Math.max(12, maxH - menuHeight - 12)),
+    });
+  };
+
+  const activeContextDoc = contextMenu
+    ? documents.find((d) => d.id === contextMenu.docId)
+    : undefined;
+  const headerCls = getPanelGlassTextClasses(themeMode);
+
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="fixed inset-0 bg-slate-900/45" onClick={onClose} />
-      <aside className="relative z-10 w-full max-w-xl bg-[#faf8f5] h-full shadow-2xl border-r border-[#ddd6c7] flex flex-col">
-        {/* Header */}
-        <div className="px-5 py-4 bg-[#1a2744] text-white flex items-center justify-between gap-2 shrink-0">
-          <div>
-            <h2 className="font-serif text-lg font-semibold">个人精读文库</h2>
-            <p className="text-xs text-slate-300">
-              共 {documents.length} 份工作台文档 · 支持四维视图自动分类与掌握度追踪
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              disabled={organizing}
-              onClick={() => void handleAutoOrganize()}
-              className="font-mono text-xs px-3 py-1.5 rounded bg-amber-300 hover:bg-amber-200 text-[#1a2744] font-bold cursor-pointer disabled:opacity-60"
-            >
-              {organizing ? "[正在整理...]" : "[一键智能整理]"}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="font-mono text-xs px-2.5 py-1.5 rounded bg-white/10 hover:bg-white/20 cursor-pointer"
-            >
-              [关闭]
-            </button>
-          </div>
-        </div>
+      <div
+        className={`fixed inset-0 bg-slate-900/45 backdrop-blur-[2px] ${
+          closing ? "prism-backdrop-exit pointer-events-none" : "prism-backdrop-enter"
+        }`}
+        onClick={onClose}
+      />
 
-        {/* Search & Organize Status */}
-        <div className="p-3.5 border-b border-[#ddd6c7] space-y-2.5 bg-[#f4efe5] shrink-0">
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="个人精读文库"
+        style={drawerMotionStyle}
+        className={`relative z-10 w-full max-w-[540px] h-full md:rounded-r-2xl bg-[#faf8f5] shadow-2xl border-r border-[#ddd6c7] flex flex-col overflow-hidden origin-top-left ${
+          closing ? "prism-library-exit pointer-events-none" : "prism-library-enter"
+        }`}
+      >
+        {/* Frosted Liquid Glass + FluidOrb Dynamic Fog Header */}
+        <PanelGlassHeader
+          testId="library-drawer-header"
+          themeMode={themeMode}
+          className="py-4"
+          left={
+            <div>
+              <h2 className={`font-serif text-lg font-semibold tracking-tight ${headerCls.heading}`}>
+                个人精读文库
+              </h2>
+              <p className={`text-xs mt-0.5 ${headerCls.subtitle}`}>
+                共 {documents.length} 份工作台文档 · 右键卡片可置顶或删除
+              </p>
+            </div>
+          }
+          right={
+            <>
+              <button
+                type="button"
+                disabled={organizing}
+                onClick={() => void handleAutoOrganize()}
+                className={`inline-flex items-center gap-1.5 text-xs px-3.5 py-1.5 rounded-full cursor-pointer transition-colors disabled:opacity-60 whitespace-nowrap ${headerCls.primaryActionBtn}`}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                </svg>
+                <span>{organizing ? "正在整理..." : "一键智能整理"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className={`font-mono text-xs px-3 py-1.5 rounded-full cursor-pointer transition-colors whitespace-nowrap ${headerCls.ghostBtn}`}
+              >
+                关闭
+              </button>
+            </>
+          }
+        />
+
+        {/* Clean Controls Area */}
+        <div className="px-4 py-3 border-b border-[#ddd6c7] space-y-2.5 bg-[#f3efe6] shrink-0">
           <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索标题、主题类别、研究范式或 #标签..."
-              className="flex-1 rounded-md border border-[#ddd6c7] bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a2744]/30"
-            />
+            <div className="relative flex-1 min-w-0">
+              <svg
+                className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索标题、主题领域或标签..."
+                className="w-full rounded-full border border-[#ddd6c7] bg-white pl-8 pr-3.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#1a2744]/20"
+              />
+            </div>
+
             <select
               aria-label="排序规则"
               value={sortMode}
               onChange={(e) => setSortMode(e.target.value as SortMode)}
-              className="font-mono text-[11px] rounded-md border border-[#ddd6c7] bg-white px-2 py-1.5 text-[#1a2744] cursor-pointer"
+              className="text-xs rounded-full border border-[#ddd6c7] bg-white px-3 py-1.5 text-[#1a2744] cursor-pointer focus:outline-none"
             >
-              <option value="urgency">排序: 疑点与追问优先</option>
-              <option value="mastery_asc">排序: 掌握度从低到高</option>
-              <option value="recent">排序: 最近更新</option>
+              <option value="urgency">疑点优先</option>
+              <option value="mastery_asc">掌握度从低到高</option>
+              <option value="recent">最近更新</option>
             </select>
-            <button
-              type="button"
-              onClick={onResetDemos}
-              className="font-mono text-[11px] px-2.5 py-1.5 rounded border border-[#ddd6c7] bg-white hover:bg-slate-100 text-slate-700 cursor-pointer shrink-0"
-            >
-              [恢复演示]
-            </button>
           </div>
 
-          {/* 4-Dimension Group Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          {/* Segmented Rounded-Full Group Switcher */}
+          <div className="inline-flex flex-wrap items-center gap-1 rounded-full bg-[#e6dfd1]/80 p-1 w-full sm:w-auto">
             {(
               [
-                { key: "domain", label: "[按主题领域]" },
-                { key: "stage", label: "[按消化进度]" },
-                { key: "paradigm", label: "[按研究范式]" },
-                { key: "flat", label: "[全部平铺]" },
+                { key: "domain", label: "按主题领域" },
+                { key: "stage", label: "按消化进度" },
+                { key: "paradigm", label: "按研究范式" },
+                { key: "flat", label: "全部" },
               ] as const
-            ).map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setGroupMode(tab.key)}
-                className={`font-mono text-[11px] px-2.5 py-1 rounded border cursor-pointer transition-colors ${
-                  groupMode === tab.key
-                    ? "bg-[#1a2744] text-amber-200 border-[#1a2744] font-semibold"
-                    : "bg-white text-slate-700 border-[#ddd6c7] hover:bg-[#faf8f5]"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            ).map((tab) => {
+              const active = groupMode === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setGroupMode(tab.key)}
+                  className={`flex-1 sm:flex-initial text-xs px-3 py-1 rounded-full cursor-pointer transition-all ${
+                    active
+                      ? "prism-on-dark bg-[#1a2744] text-white font-medium shadow-xs"
+                      : "text-slate-600 hover:text-[#1a2744]"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Clickable Tag Filters */}
+          {/* Slim Single-Row Horizontal Scrollable Tags (no multi-line clutter) */}
           {allTags.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
               <button
                 type="button"
                 onClick={() => setActiveTag(null)}
-                className={`font-mono text-[10px] px-2 py-0.5 rounded border cursor-pointer ${
+                className={`text-[11px] px-2.5 py-0.5 rounded-full cursor-pointer whitespace-nowrap transition-colors ${
                   activeTag === null
-                    ? "bg-[#1a2744] text-white border-[#1a2744]"
-                    : "bg-white text-slate-600 border-[#ddd6c7] hover:bg-amber-50"
+                    ? "prism-on-dark bg-[#1a2744] text-white font-medium"
+                    : "bg-white/80 text-slate-600 hover:bg-white"
                 }`}
               >
-                #全部标签
+                全部标签
               </button>
               {allTags.map(([tag, count]) => (
                 <button
                   key={tag}
                   type="button"
                   onClick={() => setActiveTag((prev) => (prev === tag ? null : tag))}
-                  className={`font-mono text-[10px] px-2 py-0.5 rounded border cursor-pointer ${
+                  className={`text-[11px] px-2.5 py-0.5 rounded-full cursor-pointer whitespace-nowrap transition-colors ${
                     activeTag === tag
-                      ? "bg-amber-200 text-[#1a2744] border-[#1a2744] font-semibold"
-                      : "bg-white text-slate-700 border-[#ddd6c7] hover:bg-amber-50"
+                      ? "bg-amber-200 text-[#1a2744] font-semibold"
+                      : "bg-white/80 text-slate-600 hover:bg-white"
                   }`}
                 >
-                  {`#${tag} (${count})`}
+                  {`#${tag} ${count}`}
                 </button>
               ))}
             </div>
           )}
 
           {organizeStatus && (
-            <div className="font-mono text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-1.5">
+            <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
               {organizeStatus}
             </div>
           )}
         </div>
 
-        {/* Grouped Document List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Grouped Soft-Rounded Document Cards */}
+        <div
+          className="flex-1 overflow-y-auto p-4 space-y-5"
+          onScroll={() => {
+            if (contextMenu) setContextMenu(null);
+          }}
+        >
           {groupedSections.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-[#c7bea9] bg-white p-6 text-center text-xs text-slate-500">
+            <div className="rounded-2xl border border-dashed border-[#c7bea9] bg-white p-8 text-center text-xs text-slate-500">
               当前筛选条件未匹配到文库文档，请清除关键词或标签筛选。
             </div>
           ) : (
             groupedSections.map((group) => {
               const isCollapsed = Boolean(collapsedGroups[group.key]);
               return (
-                <section key={group.key} className="space-y-2">
+                <section key={group.key} className="space-y-2.5">
                   <button
                     type="button"
                     onClick={() =>
@@ -330,12 +482,23 @@ export function LibraryDrawer({
                         [group.key]: !prev[group.key],
                       }))
                     }
-                    className="w-full flex items-center justify-between px-3 py-1.5 rounded-md bg-[#efeae0] border border-[#ddd6c7] text-left cursor-pointer hover:bg-[#e7e0d2]"
+                    className="w-full flex items-center justify-between px-1.5 py-1 rounded-lg text-left cursor-pointer hover:bg-[#efeae0]/70 transition-colors"
                   >
-                    <span className="font-mono text-xs font-bold text-[#1a2744]">
-                      {`${isCollapsed ? "[+]" : "[-]"} ${group.key}`}
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1a2744]">
+                      <svg
+                        className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-150 ${
+                          isCollapsed ? "-rotate-90" : ""
+                        }`}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                      <span>{group.key}</span>
                     </span>
-                    <span className="font-mono text-[11px] text-slate-600">
+                    <span className="font-mono text-[11px] text-slate-500">
                       {`${group.items.length} 篇`}
                     </span>
                   </button>
@@ -347,104 +510,99 @@ export function LibraryDrawer({
                         return (
                           <div
                             key={doc.id}
-                            className={`rounded-lg border p-3.5 transition-colors ${
+                            data-testid={`library-card-${doc.id}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              setContextMenu(null);
+                              onSelect(doc.id);
+                              onClose();
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setContextMenu(null);
+                                onSelect(doc.id);
+                                onClose();
+                              }
+                            }}
+                            onContextMenu={(e) => openContextMenuAt(e, doc.id, Boolean(meta.pinned))}
+                            className={`rounded-2xl p-4 cursor-pointer transition-all select-none ${
                               isActive
-                                ? "bg-white border-[#1a2744] ring-1 ring-[#1a2744]"
-                                : "bg-white/90 border-[#ddd6c7] hover:bg-white"
+                                ? "bg-white border border-[#1a2744]/35 ring-2 ring-[#1a2744]/12 shadow-sm"
+                                : "bg-white border border-[#e8e1d3] hover:border-[#ddd6c7] hover:shadow-sm"
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onSelect(doc.id);
-                                  onClose();
-                                }}
-                                className="text-left flex-1 min-w-0 cursor-pointer"
-                              >
-                                <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5 mb-2">
                                   {meta.pinned && (
-                                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-300 text-[#1a2744] font-bold">
-                                      [置顶]
+                                    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-200/80 text-[#1a2744] font-semibold">
+                                      已置顶
                                     </span>
                                   )}
-                                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[#f0ece2] text-[#1a2744] font-semibold">
+                                  {isActive && (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#1a2744]/10 text-[#1a2744] font-semibold">
+                                      当前阅读
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f0ece2] text-[#1a2744] font-medium">
                                     {doc.modeName}
                                   </span>
-                                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                                     {meta.paradigmType}
                                   </span>
                                   <span
-                                    className={`font-mono text-[10px] px-1.5 py-0.5 rounded border ${STAGE_BADGE_CLS[stats.stage]}`}
+                                    className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STAGE_BADGE_CLS[stats.stage]}`}
                                   >
                                     {stats.stageLabel}
                                   </span>
                                 </div>
 
-                                <div className="font-serif font-semibold text-sm text-[#1a2744] truncate">
+                                <h3 className="font-serif font-semibold text-sm text-[#1a2744] leading-snug truncate">
                                   {doc.title}
-                                </div>
-                                <div className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
                                   {doc.subtitle}
-                                </div>
-                              </button>
-
-                              <div className="flex flex-col items-end gap-1 shrink-0">
-                                {onUpdateDocMeta && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      onUpdateDocMeta(doc.id, { pinned: !meta.pinned })
-                                    }
-                                    className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-[#ddd6c7] bg-[#fcfbf8] hover:bg-amber-50 text-[#1a2744] cursor-pointer"
-                                  >
-                                    {meta.pinned ? "[取消置顶]" : "[置顶]"}
-                                  </button>
-                                )}
-                                {documents.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => onDelete(doc.id)}
-                                    className="font-mono text-[11px] text-rose-600 hover:underline cursor-pointer"
-                                  >
-                                    [删除]
-                                  </button>
-                                )}
+                                </p>
                               </div>
                             </div>
 
-                            {/* Tags + Mastery Progress Telemetry */}
-                            <div className="mt-2.5 pt-2 border-t border-[#ede6d8] space-y-1.5">
-                              <div className="flex flex-wrap items-center gap-1">
-                                {meta.tags.map((tag) => (
-                                  <button
-                                    key={tag}
-                                    type="button"
-                                    onClick={() =>
-                                      setActiveTag((prev) => (prev === tag ? null : tag))
-                                    }
-                                    className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[#faf7f0] border border-[#ddd6c7] text-[#4b453d] hover:border-[#1a2744] cursor-pointer"
-                                  >
-                                    #{tag}
-                                  </button>
-                                ))}
-                              </div>
+                            {/* Soft Tags + Mastery Bar */}
+                            <div className="mt-3 pt-2.5 border-t border-[#e8e1d3] space-y-2">
+                              {meta.tags.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {meta.tags.map((tag) => (
+                                    <button
+                                      key={tag}
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveTag((prev) => (prev === tag ? null : tag));
+                                      }}
+                                      className="text-[10px] px-2 py-0.5 rounded-full bg-[#f3efe6] text-slate-600 hover:bg-[#efeae0] hover:text-[#1a2744] cursor-pointer transition-colors"
+                                    >
+                                      #{tag}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
 
-                              <div className="flex items-center justify-between gap-2 font-mono text-[10px] text-slate-600">
+                              <div className="flex items-center justify-between gap-2 font-mono text-[10px] text-slate-500">
                                 <span>
-                                  {`掌握 ${stats.masteryPercent}% | 懂 ${stats.understoodCount}/${stats.totalUnits} 段${
+                                  {`掌握 ${stats.masteryPercent}% · 懂 ${stats.understoodCount}/${stats.totalUnits} 段${
                                     stats.fuzzyOrConfusedCount > 0
-                                      ? ` | 待攻克 ${stats.fuzzyOrConfusedCount} 处`
+                                      ? ` · 待攻克 ${stats.fuzzyOrConfusedCount} 处`
                                       : ""
-                                  }${stats.qaCount > 0 ? ` | AI追问 ${stats.qaCount} 次` : ""}`}
+                                  }${stats.qaCount > 0 ? ` · 追问 ${stats.qaCount}` : ""}`}
                                 </span>
-                                <span className="text-[#1a2744] font-semibold">
+                                <span className="text-[#1a2744]/80 font-medium truncate">
                                   {meta.domainCategory}
                                 </span>
                               </div>
-                              <div className="w-full h-1.5 rounded-full bg-[#ebe4d6] overflow-hidden">
+                              <div className="w-full h-1.5 rounded-full bg-[#e6dfd1] overflow-hidden">
                                 <div
-                                  className="h-full bg-[#1a2744] transition-all"
+                                  className="h-full rounded-full bg-[#1a2744] transition-all"
                                   style={{ width: `${Math.max(4, stats.masteryPercent)}%` }}
                                 />
                               </div>
@@ -460,6 +618,63 @@ export function LibraryDrawer({
           )}
         </div>
       </aside>
+
+      {/* Right-Click Context Menu */}
+      {contextMenu && activeContextDoc && (
+        <div
+          ref={menuRef}
+          data-testid="library-context-menu"
+          role="menu"
+          style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+          className="fixed z-60 w-44 rounded-xl bg-white border border-[#ddd6c7] shadow-2xl p-1.5 text-xs text-[#1a2744] space-y-0.5"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onSelect(activeContextDoc.id);
+              setContextMenu(null);
+              onClose();
+            }}
+            className="w-full px-3 py-2 rounded-lg text-left hover:bg-[#efeae0] cursor-pointer flex items-center gap-2 transition-colors"
+          >
+            打开阅读
+          </button>
+
+          {onUpdateDocMeta && (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid={`library-pin-${activeContextDoc.id}`}
+              onClick={() => {
+                onUpdateDocMeta(activeContextDoc.id, { pinned: !contextMenu.pinned });
+                setContextMenu(null);
+              }}
+              className="w-full px-3 py-2 rounded-lg text-left hover:bg-[#efeae0] cursor-pointer flex items-center gap-2 transition-colors"
+            >
+              {contextMenu.pinned ? "取消置顶" : "置顶文档"}
+            </button>
+          )}
+
+          {documents.length > 1 && (
+            <>
+              <div className="my-1 border-t border-[#e8e1d3]" />
+              <button
+                type="button"
+                role="menuitem"
+                data-testid={`library-delete-${activeContextDoc.id}`}
+                onClick={() => {
+                  onDelete(activeContextDoc.id);
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-2 rounded-lg text-left text-rose-600 hover:bg-rose-50 font-medium cursor-pointer flex items-center gap-2 transition-colors"
+              >
+                删除文档
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

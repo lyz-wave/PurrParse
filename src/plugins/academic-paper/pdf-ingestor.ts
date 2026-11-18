@@ -1,6 +1,7 @@
 import type { DataTableBlock, FigureBlock } from "@/core/contracts/document-ast";
 import type { RawSourcePayload, SourceUnit } from "@/core/contracts/mode-plugin";
 import {
+  extractUrlFromShareText,
   fetchArxivHtmlPaper,
   fetchArxivPaperPdf,
   fetchCleanWebPage,
@@ -521,7 +522,7 @@ export async function ingestAcademicPaper(payload: RawSourcePayload): Promise<So
       const { extractText } = await import("unpdf");
       const extracted = await extractText(bytes, { mergePages: false });
       text = Array.isArray(extracted.text) ? extracted.text.join("\n") : String(extracted.text);
-    } else if (/^https?:\/\//i.test(rawTarget)) {
+    } else if (/^https?:\/\//i.test(rawTarget) || extractUrlFromShareText(rawTarget)) {
       const page = await fetchCleanWebPage(rawTarget);
       if (page.title && !payload.title) {
         payload.title = page.title;
@@ -529,6 +530,25 @@ export async function ingestAcademicPaper(payload: RawSourcePayload): Promise<So
       text = page.text;
     } else {
       throw new Error("未能识别该 arXiv 编号或论文链接，请使用如 1706.03762 或 https://arxiv.org/abs/2106.09685 的格式。");
+    }
+  } else if (payload.kind === "text") {
+    const trimmedText = text.trim();
+    const shareLink = trimmedText.length <= 420 ? extractUrlFromShareText(trimmedText) : null;
+    if (shareLink && (shareLink.platform !== "web" || !/\s/.test(trimmedText))) {
+      const arxivId = parseArxivIdentifier(shareLink.url);
+      if (arxivId) {
+        const htmlPaper = await fetchArxivHtmlPaper(arxivId);
+        if (htmlPaper) {
+          if (htmlPaper.title && !payload.title) payload.title = htmlPaper.title;
+          text = htmlPaper.text;
+        }
+      } else {
+        const page = await fetchCleanWebPage(trimmedText);
+        if (page.title && !payload.title) {
+          payload.title = page.title;
+        }
+        text = page.text;
+      }
     }
   }
 
