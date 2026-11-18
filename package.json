@@ -17,7 +17,7 @@
     "desktop:pack": "npm run build && npm run desktop:prepare && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir",
     "desktop:build": "npm run build && npm run desktop:prepare && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
     "desktop:build:mac-x64": "npm run build && npm run desktop:prepare && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --x64",
-    "desktop:build:win": "npm run build && npm run desktop:prepare && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --x64 --arm64"
+    "desktop:build:win": "npm run build && npm run desktop:prepare && electron-builder --win nsis --x64 --arm64"
   },
   "build": {
     "appId": "com.purrparse.desktop",
