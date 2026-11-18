@@ -1,9 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-function toWinLongPath(p) {
+function toWinFsPath(p) {
   const abs = path.resolve(p);
-  if (process.platform !== "win32" || abs.startsWith("\\\\?\\")) {
+  if (process.platform !== "win32" || abs.length < 240 || abs.startsWith("\\\\?\\")) {
     return abs;
   }
   if (abs.startsWith("\\\\")) {
@@ -30,51 +30,60 @@ function countBrokenSymlinks(dir) {
   return broken;
 }
 
-function copyDirDereferencedWindows(srcDir, destDir, activeAncestors) {
-  const longSrcDir = toWinLongPath(srcDir);
-  const longDestDir = toWinLongPath(destDir);
-  let realSrcDir;
+function resolveCanonicalDirKey(dir) {
+  const abs = path.resolve(dir);
   try {
-    realSrcDir = fs.realpathSync(longSrcDir);
+    return fs.realpathSync.native(abs).toLowerCase();
   } catch {
+    return abs.toLowerCase();
+  }
+}
+
+function copyDirDereferencedWindows(srcDir, destDir, activeAncestors) {
+  const canonicalKey = resolveCanonicalDirKey(srcDir);
+  if (activeAncestors.has(canonicalKey)) {
     return;
   }
+  activeAncestors.add(canonicalKey);
+  fs.mkdirSync(toWinFsPath(destDir), { recursive: true });
 
-  if (activeAncestors.has(realSrcDir)) {
-    return;
-  }
-  activeAncestors.add(realSrcDir);
-  fs.mkdirSync(longDestDir, { recursive: true });
-
-  const entries = fs.readdirSync(longSrcDir, { withFileTypes: true });
+  const entries = fs.readdirSync(toWinFsPath(srcDir), { withFileTypes: true });
   for (const entry of entries) {
     const srcEntry = path.join(srcDir, entry.name);
     const destEntry = path.join(destDir, entry.name);
-    const longSrcEntry = toWinLongPath(srcEntry);
-    const longDestEntry = toWinLongPath(destEntry);
+    const fsSrcEntry = toWinFsPath(srcEntry);
+    const fsDestEntry = toWinFsPath(destEntry);
 
-    let stat;
-    try {
-      stat = fs.statSync(longSrcEntry);
-    } catch {
-      // Skip dangling optional-dependency junctions on Windows cleanly
+    if (entry.isDirectory()) {
+      copyDirDereferencedWindows(srcEntry, destEntry, activeAncestors);
       continue;
     }
 
+    if (entry.isFile()) {
+      fs.copyFileSync(fsSrcEntry, fsDestEntry);
+      continue;
+    }
+
+    let stat;
+    try {
+      stat = fs.statSync(fsSrcEntry);
+    } catch {
+      // Skip dangling optional-dependency junctions cleanly
+      continue;
+    }
     if (stat.isDirectory()) {
       copyDirDereferencedWindows(srcEntry, destEntry, activeAncestors);
     } else if (stat.isFile()) {
-      fs.copyFileSync(longSrcEntry, longDestEntry);
+      fs.copyFileSync(fsSrcEntry, fsDestEntry);
     }
   }
 
-  activeAncestors.delete(realSrcDir);
+  activeAncestors.delete(canonicalKey);
 }
 
 function copyStandaloneBundle(src, dest, { dereference = false } = {}) {
-  const longDest = toWinLongPath(dest);
-  fs.rmSync(longDest, { recursive: true, force: true });
-  fs.mkdirSync(toWinLongPath(path.dirname(dest)), { recursive: true });
+  fs.rmSync(toWinFsPath(dest), { recursive: true, force: true });
+  fs.mkdirSync(toWinFsPath(path.dirname(dest)), { recursive: true });
 
   if (process.platform === "win32") {
     copyDirDereferencedWindows(src, dest, new Set());
@@ -95,5 +104,5 @@ function copyStandaloneBundle(src, dest, { dereference = false } = {}) {
 
 module.exports = {
   copyStandaloneBundle,
-  toWinLongPath,
+  toWinFsPath,
 };

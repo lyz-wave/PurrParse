@@ -3,7 +3,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { copyStandaloneBundle, toWinLongPath } = require("./copy-standalone.cjs");
+const { copyStandaloneBundle, toWinFsPath } = require("./copy-standalone.cjs");
 
 const ROOT = process.cwd();
 const STANDALONE_SRC = path.join(ROOT, ".next", "standalone");
@@ -26,17 +26,24 @@ try {
     const broken = copyStandaloneBundle(STANDALONE_SRC, OUT_DIR, { dereference: false });
 
     const staticDest = path.join(OUT_DIR, ".next", "static");
-    fs.mkdirSync(toWinLongPath(path.dirname(staticDest)), { recursive: true });
-    fs.cpSync(toWinLongPath(STATIC_SRC), toWinLongPath(staticDest), {
+    fs.mkdirSync(toWinFsPath(path.dirname(staticDest)), { recursive: true });
+    fs.cpSync(toWinFsPath(STATIC_SRC), toWinFsPath(staticDest), {
       recursive: true,
       dereference: true,
     });
 
     if (fs.existsSync(PUBLIC_SRC)) {
-      fs.cpSync(toWinLongPath(PUBLIC_SRC), toWinLongPath(path.join(OUT_DIR, "public")), {
+      fs.cpSync(toWinFsPath(PUBLIC_SRC), toWinFsPath(path.join(OUT_DIR, "public")), {
         recursive: true,
         dereference: true,
       });
+    }
+
+    if (!fs.existsSync(path.join(OUT_DIR, "server.js"))) {
+      throw new Error(`[prepare-electron-standalone] Staged bundle missing server.js in ${OUT_DIR}`);
+    }
+    if (!fs.existsSync(path.join(OUT_DIR, "node_modules", "next"))) {
+      throw new Error(`[prepare-electron-standalone] Staged bundle missing node_modules/next in ${OUT_DIR}`);
     }
 
     if (broken > 0) {
