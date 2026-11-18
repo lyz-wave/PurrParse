@@ -1,24 +1,32 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans, Lora } from "next/font/google";
+import localFont from "next/font/local";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
-const lora = Lora({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const lora = localFont({
+  src: "./fonts/lora.woff2",
+  weight: "400 700",
+  style: "normal",
   variable: "--font-lora",
+  display: "swap",
 });
 
-const ibmSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const ibmSans = localFont({
+  src: "./fonts/ibm-plex-sans.woff2",
+  weight: "400 700",
+  style: "normal",
   variable: "--font-ibm-sans",
+  display: "swap",
 });
 
-const ibmMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+const ibmMono = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-mono-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-600.woff2", weight: "600", style: "normal" },
+  ],
   variable: "--font-ibm-mono",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
