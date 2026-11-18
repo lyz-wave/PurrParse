@@ -26,6 +26,7 @@
       "output": "dist-electron",
       "buildResources": "electron/build"
     },
+    "publish": null,
     "npmRebuild": false,
     "afterPack": "electron/after-pack.cjs",
     "files": [

@@ -1,5 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { copyStandaloneBundle, toWinLongPath } = require("./copy-standalone.cjs");
 
 const ROOT = process.cwd();
 const STANDALONE_SRC = path.join(ROOT, ".next", "standalone");
@@ -7,65 +11,42 @@ const STATIC_SRC = path.join(ROOT, ".next", "static");
 const PUBLIC_SRC = path.join(ROOT, "public");
 const OUT_DIR = path.join(ROOT, "electron-resources", "standalone");
 
-if (!fs.existsSync(path.join(STANDALONE_SRC, "server.js"))) {
-  console.error(
-    "[prepare-electron-standalone] Missing .next/standalone/server.js. Run `npm run build` first."
-  );
-  process.exit(1);
-}
+try {
+  if (!fs.existsSync(path.join(STANDALONE_SRC, "server.js"))) {
+    console.log(
+      "[prepare-electron-standalone] Missing .next/standalone/server.js. Run `npm run build` first."
+    );
+    process.exitCode = 1;
+  } else if (!fs.existsSync(STATIC_SRC)) {
+    console.log(
+      "[prepare-electron-standalone] Missing .next/static. Run `npm run build` first."
+    );
+    process.exitCode = 1;
+  } else {
+    const broken = copyStandaloneBundle(STANDALONE_SRC, OUT_DIR, { dereference: false });
 
-if (!fs.existsSync(STATIC_SRC)) {
-  console.error(
-    "[prepare-electron-standalone] Missing .next/static. Run `npm run build` first."
-  );
-  process.exit(1);
-}
+    const staticDest = path.join(OUT_DIR, ".next", "static");
+    fs.mkdirSync(toWinLongPath(path.dirname(staticDest)), { recursive: true });
+    fs.cpSync(toWinLongPath(STATIC_SRC), toWinLongPath(staticDest), {
+      recursive: true,
+      dereference: true,
+    });
 
-fs.rmSync(OUT_DIR, { recursive: true, force: true });
-fs.mkdirSync(path.dirname(OUT_DIR), { recursive: true });
+    if (fs.existsSync(PUBLIC_SRC)) {
+      fs.cpSync(toWinLongPath(PUBLIC_SRC), toWinLongPath(path.join(OUT_DIR, "public")), {
+        recursive: true,
+        dereference: true,
+      });
+    }
 
-// Preserve relative symlinks on POSIX/macOS; dereference cleanly on Windows to avoid Developer-Mode EPERM
-const isWin = process.platform === "win32";
-fs.cpSync(STANDALONE_SRC, OUT_DIR, {
-  recursive: true,
-  dereference: isWin,
-  verbatimSymlinks: !isWin,
-});
-
-// Copy Next.js static assets into standalone/.next/static
-const staticDest = path.join(OUT_DIR, ".next", "static");
-fs.mkdirSync(path.dirname(staticDest), { recursive: true });
-fs.cpSync(STATIC_SRC, staticDest, { recursive: true, dereference: true });
-
-// Copy public/ directory if present
-if (fs.existsSync(PUBLIC_SRC)) {
-  fs.cpSync(PUBLIC_SRC, path.join(OUT_DIR, "public"), {
-    recursive: true,
-    dereference: true,
-  });
-}
-
-// Verify zero broken symlinks and required files
-let brokenSymlinks = 0;
-function walkVerify(dir) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isSymbolicLink()) {
-      const target = fs.readlinkSync(full);
-      const resolved = path.resolve(path.dirname(full), target);
-      if (!fs.existsSync(resolved)) {
-        brokenSymlinks += 1;
-        console.error(`[prepare-electron-standalone] Broken symlink: ${full} -> ${target}`);
-      }
-    } else if (entry.isDirectory()) {
-      walkVerify(full);
+    if (broken > 0) {
+      console.log(`[prepare-electron-standalone] Found ${broken} broken symlinks.`);
+      process.exitCode = 1;
+    } else {
+      console.log(`[prepare-electron-standalone] Ready: ${OUT_DIR}`);
     }
   }
+} catch (err) {
+  console.log("[prepare-electron-standalone] Fatal error:", err);
+  process.exitCode = 1;
 }
-walkVerify(OUT_DIR);
-
-if (brokenSymlinks > 0) {
-  process.exit(1);
-}
-
-console.log(`[prepare-electron-standalone] Ready: ${OUT_DIR}`);

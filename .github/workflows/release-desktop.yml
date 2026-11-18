@@ -51,15 +51,15 @@ jobs:
         include:
           - label: macOS Apple Silicon (arm64)
             os: macos-latest
-            cmd: npm run desktop:build
+            builder_args: --mac dmg --arm64 --publish never
             pattern: dist-electron/*.dmg
           - label: macOS Intel (x64)
             os: macos-15-intel
-            cmd: npm run desktop:build:mac-x64
+            builder_args: --mac dmg --x64 --publish never
             pattern: dist-electron/*.dmg
           - label: Windows (x64 & arm64)
             os: windows-latest
-            cmd: npm run desktop:build:win
+            builder_args: --win nsis --x64 --arm64 --publish never
             pattern: dist-electron/*.exe
 
     runs-on: ${{ matrix.os }}
@@ -89,7 +89,10 @@ jobs:
       - name: Package PurrParse Desktop (${{ matrix.label }})
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: ${{ matrix.cmd }}
+        run: |
+          npm run build
+          npm run desktop:prepare
+          npx electron-builder ${{ matrix.builder_args }}
 
       - name: Upload installers to GitHub Release
         env:
