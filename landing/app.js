@@ -1299,7 +1299,7 @@ function initDesktopDownloads() {
       t.id,
       {
         url: `https://github.com/${REPO}/releases/latest/download/${t.defaultAsset}`,
-        available: t.id === 'mac-arm64',
+        available: true,
         sizeLabel: '',
       },
     ])
