@@ -10,6 +10,7 @@ import type {
   UserAnnotationsState,
   WorkbenchDocument,
 } from "@/core/contracts/document-ast";
+import type { AnalysisSpeedMode } from "@/core/engine/chunk-orchestrator";
 import { inferDocumentTaxonomy } from "@/core/engine/library-organizer";
 import type { LLMConfig } from "@/core/engine/llm-adapters";
 import { DEMO_DOCUMENTS } from "@/plugins";
@@ -18,6 +19,24 @@ export type WorkbenchThemeMode = "paper" | "aurora" | "studio";
 export type ReadingDepthMode = "pure" | "workbench" | "review";
 export type PureLangMode = "original" | "chinese";
 export type WorkbenchViewMode = "home" | "reader";
+export type AnalysisTaskStatus = "queued" | "running" | "completed" | "error" | "cancelled";
+
+export interface AnalysisTaskItem {
+  id: string;
+  modeId: string;
+  modeName: string;
+  title: string;
+  sourceLabel: string;
+  speedMode: AnalysisSpeedMode;
+  status: AnalysisTaskStatus;
+  progress: number;
+  message: string;
+  startedAt: number;
+  finishedAt?: number;
+  documentId?: string;
+  hasPartialDoc?: boolean;
+  error?: string;
+}
 
 const STORAGE_KEYS = {
   DOCUMENTS: "prism_workbench_docs_v1",
@@ -29,6 +48,7 @@ const STORAGE_KEYS = {
   PURE_LANG: "prism_workbench_pure_lang_v1",
   ONBOARDING_DONE: "purrparse_onboarding_done_v1",
   START_ON_HOME: "purrparse_start_on_home_v1",
+  ANALYSIS_SPEED: "purrparse_analysis_speed_v1",
 } as const;
 
 const EMPTY_ANNOTATIONS: UserAnnotationsState = {
@@ -103,6 +123,8 @@ export interface WorkbenchStoreState {
   tooltip: TooltipState;
   onboardingOpen: boolean;
   onboardingCompleted: boolean;
+  analysisTasks: AnalysisTaskItem[];
+  analysisSpeedMode: AnalysisSpeedMode;
 
   // Actions
   hydrateFromStorage: () => Promise<void>;
@@ -112,7 +134,12 @@ export interface WorkbenchStoreState {
   openOnboarding: () => void;
   completeOnboarding: () => void;
   setActiveDocument: (id: string) => void;
-  upsertDocument: (doc: WorkbenchDocument) => void;
+  upsertDocument: (doc: WorkbenchDocument, options?: { activate?: boolean }) => void;
+  setAnalysisSpeedMode: (mode: AnalysisSpeedMode) => void;
+  addAnalysisTask: (task: AnalysisTaskItem) => void;
+  updateAnalysisTask: (taskId: string, patch: Partial<AnalysisTaskItem>) => void;
+  removeAnalysisTask: (taskId: string) => void;
+  clearFinishedAnalysisTasks: () => void;
   deleteDocument: (id: string) => void;
   resetDemos: () => void;
   autoOrganizeLibrary: (
@@ -212,6 +239,8 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
   tooltip: { visible: false, text: "", x: 0, y: 0 },
   onboardingOpen: false,
   onboardingCompleted: true,
+  analysisTasks: [],
+  analysisSpeedMode: "balanced",
 
   hydrateFromStorage: async () => {
     if (get().hydrated) return;
@@ -225,6 +254,7 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
       savedPureLang,
       savedOnboardingDone,
       savedStartOnHome,
+      savedAnalysisSpeed,
     ] = await Promise.all([
       readPersistedValue<WorkbenchDocument[]>(STORAGE_KEYS.DOCUMENTS),
       readPersistedValue<Record<string, UserAnnotationsState>>(STORAGE_KEYS.ANNOTATIONS),
@@ -235,6 +265,7 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
       readPersistedValue<PureLangMode>(STORAGE_KEYS.PURE_LANG),
       readPersistedValue<boolean>(STORAGE_KEYS.ONBOARDING_DONE),
       readPersistedValue<boolean>(STORAGE_KEYS.START_ON_HOME),
+      readPersistedValue<AnalysisSpeedMode>(STORAGE_KEYS.ANALYSIS_SPEED),
     ]);
 
     const repoDemo = DEMO_DOCUMENTS.find((d) => d.modeId === "repo-deconstruct");
@@ -273,6 +304,7 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
     const validPureLang: PureLangMode = savedPureLang === "chinese" ? "chinese" : "original";
     const completed = savedOnboardingDone === true;
     const preferHome = savedStartOnHome !== false;
+    const validSpeedMode: AnalysisSpeedMode = savedAnalysisSpeed === "fast" ? "fast" : "balanced";
 
     set({
       hydrated: true,
@@ -287,6 +319,7 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
       viewMode: preferHome ? "home" : "reader",
       onboardingCompleted: completed,
       onboardingOpen: !completed,
+      analysisSpeedMode: validSpeedMode,
     });
 
     if (docsMigrated) {
@@ -344,7 +377,8 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
     void persistValue(STORAGE_KEYS.ACTIVE_DOC_ID, id);
   },
 
-  upsertDocument: (doc) => {
+  upsertDocument: (doc, options) => {
+    const activate = options?.activate ?? true;
     const normalizedDoc: WorkbenchDocument = doc.libraryMeta
       ? doc
       : { ...doc, libraryMeta: inferDocumentTaxonomy(doc) };
@@ -354,6 +388,13 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
       idx >= 0
         ? existing.map((d, i) => (i === idx ? normalizedDoc : d))
         : [normalizedDoc, ...existing];
+
+    if (!activate) {
+      set({ documents: nextDocs });
+      void persistValue(STORAGE_KEYS.DOCUMENTS, nextDocs);
+      return;
+    }
+
     set({
       documents: nextDocs,
       activeDocumentId: normalizedDoc.id,
@@ -367,6 +408,33 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
     void persistValue(STORAGE_KEYS.DOCUMENTS, nextDocs);
     void persistValue(STORAGE_KEYS.ACTIVE_DOC_ID, normalizedDoc.id);
   },
+
+  setAnalysisSpeedMode: (analysisSpeedMode) => {
+    set({ analysisSpeedMode });
+    void persistValue(STORAGE_KEYS.ANALYSIS_SPEED, analysisSpeedMode);
+  },
+
+  addAnalysisTask: (task) =>
+    set((state) => ({
+      analysisTasks: [task, ...state.analysisTasks.filter((t) => t.id !== task.id)],
+    })),
+
+  updateAnalysisTask: (taskId, patch) =>
+    set((state) => ({
+      analysisTasks: state.analysisTasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
+    })),
+
+  removeAnalysisTask: (taskId) =>
+    set((state) => ({
+      analysisTasks: state.analysisTasks.filter((t) => t.id !== taskId),
+    })),
+
+  clearFinishedAnalysisTasks: () =>
+    set((state) => ({
+      analysisTasks: state.analysisTasks.filter(
+        (t) => t.status === "queued" || t.status === "running"
+      ),
+    })),
 
   deleteDocument: (id) => {
     const filtered = get().documents.filter((d) => d.id !== id);

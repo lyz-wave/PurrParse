@@ -1201,7 +1201,7 @@ function initDesktopDownloads() {
   const REPO = 'lyz-wave/deep-reading-workbench';
   const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
   const SOURCE_ZIP_URL = `https://github.com/${REPO}/archive/refs/heads/main.zip`;
-  const DEFAULT_VERSION = 'v1.1.1';
+  const DEFAULT_VERSION = 'v1.1.2';
 
   const TARGETS = [
     {
@@ -1211,7 +1211,7 @@ function initDesktopDownloads() {
       longLabel: 'Mac Apple Silicon (ARM64)',
       ext: 'dmg',
       pattern: /(?:mac[-_.]?arm64|arm64)\.dmg$/i,
-      defaultAsset: 'PurrParse-1.1.1-mac-arm64.dmg',
+      defaultAsset: 'PurrParse-1.1.2-mac-arm64.dmg',
     },
     {
       id: 'mac-x64',
@@ -1220,7 +1220,7 @@ function initDesktopDownloads() {
       longLabel: 'Mac Intel (x64)',
       ext: 'dmg',
       pattern: /(?:mac[-_.]?x64|x64)\.dmg$/i,
-      defaultAsset: 'PurrParse-1.1.1-mac-x64.dmg',
+      defaultAsset: 'PurrParse-1.1.2-mac-x64.dmg',
     },
     {
       id: 'win-x64',
@@ -1229,7 +1229,7 @@ function initDesktopDownloads() {
       longLabel: 'Windows x64',
       ext: 'exe',
       pattern: /(?:win[-_.]?x64|x64).*\.exe$/i,
-      defaultAsset: 'PurrParse-1.1.1-win-x64-Setup.exe',
+      defaultAsset: 'PurrParse-1.1.2-win-x64-Setup.exe',
     },
     {
       id: 'win-arm64',
@@ -1238,7 +1238,7 @@ function initDesktopDownloads() {
       longLabel: 'Windows ARM64',
       ext: 'exe',
       pattern: /(?:win[-_.]?arm64|arm64).*\.exe$/i,
-      defaultAsset: 'PurrParse-1.1.1-win-arm64-Setup.exe',
+      defaultAsset: 'PurrParse-1.1.2-win-arm64-Setup.exe',
     },
   ];
 

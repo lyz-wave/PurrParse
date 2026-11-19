@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AiStatus, resolveAnalyzeAiState } from "@/components/ui/ai-status";
 import {
   getPanelGlassTextClasses,
   getTopbarGlassStyle,
@@ -23,12 +22,13 @@ import {
   inferDocumentTaxonomy,
 } from "@/core/engine/library-organizer";
 import { defaultPluginRegistry } from "@/plugins";
-import type { WorkbenchThemeMode } from "@/store/workbench-store";
+import { useWorkbenchStore, type WorkbenchThemeMode } from "@/store/workbench-store";
 import {
-  detectOmniSource,
-  filesToSourcePayload,
-  runStreamedAnalysis,
-} from "./analyze-client";
+  enqueueBackgroundAnalysis,
+  splitOmniBatchInputs,
+} from "./analysis-task-manager";
+import { detectOmniSource, filesToSourcePayload } from "./analyze-client";
+import { TasksTopbarPill } from "./BackgroundTasksDock";
 import { isMacDesktopRuntime } from "./desktop-runtime";
 
 const THEME_CYCLE_ORDER: WorkbenchThemeMode[] = ["paper", "aurora", "studio"];
@@ -66,8 +66,12 @@ export interface WorkspaceHomeProps {
   llmConfig: LLMConfig;
   themeMode: WorkbenchThemeMode;
   startOnHome?: boolean;
+  tasksDockOpen?: boolean;
+  hasAppUpdate?: boolean;
   onThemeChange: (theme: WorkbenchThemeMode) => void;
   onToggleStartOnHome?: () => void;
+  onToggleTasksDock?: () => void;
+  onTasksEnqueued?: () => void;
   onOpenDocument: (docId: string) => void;
   onOpenReview: (docId: string) => void;
   onOpenLibrary: (originEl?: HTMLElement | null) => void;
@@ -75,7 +79,7 @@ export interface WorkspaceHomeProps {
   onOpenSettings: () => void;
   onOpenApiSettings: () => void;
   onOpenOnboarding?: () => void;
-  onDocumentReady: (doc: WorkbenchDocument) => void;
+  onDocumentReady?: (doc: WorkbenchDocument) => void;
 }
 
 export function WorkspaceHome({
@@ -84,15 +88,22 @@ export function WorkspaceHome({
   annotationsByDoc,
   llmConfig,
   themeMode,
+  tasksDockOpen = false,
+  hasAppUpdate = false,
   onThemeChange,
+  onToggleTasksDock,
+  onTasksEnqueued,
   onOpenDocument,
   onOpenReview,
   onOpenLibrary,
   onOpenStudio,
   onOpenSettings,
   onOpenApiSettings,
-  onDocumentReady,
 }: WorkspaceHomeProps) {
+  const analysisTasks = useWorkbenchStore((s) => s.analysisTasks);
+  const analysisSpeedMode = useWorkbenchStore((s) => s.analysisSpeedMode);
+  const setAnalysisSpeedMode = useWorkbenchStore((s) => s.setAnalysisSpeedMode);
+
   const plugins = useMemo(() => defaultPluginRegistry.list(), []);
   const [selectedModeId, setSelectedModeId] = useState<string>(
     plugins[0]?.id ?? "academic-paper"
@@ -104,9 +115,7 @@ export function WorkspaceHome({
   const [attachedTitle, setAttachedTitle] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [progressPct, setProgressPct] = useState(0);
-  const [progressText, setProgressText] = useState("");
+  const [queueFeedbackMsg, setQueueFeedbackMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [omniFocused, setOmniFocused] = useState(false);
   const [submitHovered, setSubmitHovered] = useState(false);
@@ -122,11 +131,13 @@ export function WorkspaceHome({
   const folderStageRef = useRef<HTMLDivElement | null>(null);
   const folderVisualRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(true);
+  const feedbackTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
     };
   }, []);
 
@@ -163,11 +174,16 @@ export function WorkspaceHome({
     [omniText, plugins]
   );
 
+  const batchOmniItems = useMemo(
+    () => (attachedFilePayload ? null : splitOmniBatchInputs(omniText, plugins)),
+    [attachedFilePayload, omniText, plugins]
+  );
+
   useEffect(() => {
-    if (!manualModeLocked && smartDetection.suggestedModeId) {
+    if (!manualModeLocked && smartDetection.suggestedModeId && !batchOmniItems) {
       setSelectedModeId(smartDetection.suggestedModeId);
     }
-  }, [manualModeLocked, smartDetection.suggestedModeId]);
+  }, [manualModeLocked, smartDetection.suggestedModeId, batchOmniItems]);
 
   const handleCycleTheme = () => {
     const idx = THEME_CYCLE_ORDER.indexOf(themeMode);
@@ -314,16 +330,43 @@ export function WorkspaceHome({
     setAttachedTitle("");
   };
 
-  const handleAnalyzeSubmit = async () => {
-    if (isAnalyzing || !activePlugin) return;
+  const handleAnalyzeSubmit = () => {
+    if (!activePlugin) return;
     setErrorMsg("");
 
+    const showFeedback = (msg: string) => {
+      setQueueFeedbackMsg(msg);
+      if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = window.setTimeout(() => {
+        if (mountedRef.current) setQueueFeedbackMsg("");
+      }, 4500);
+    };
+
     const trimmed = omniText.trim();
+    if (!attachedFilePayload && batchOmniItems && batchOmniItems.length >= 2) {
+      for (const item of batchOmniItems) {
+        enqueueBackgroundAnalysis({
+          modeId: item.suggestedModeId || activePlugin.id,
+          payload: {
+            kind: item.detectedKind,
+            content: item.rawLine,
+          },
+          llmConfig,
+          speedMode: analysisSpeedMode,
+        });
+      }
+      setOmniText("");
+      setManualModeLocked(false);
+      showFeedback(`已将 ${batchOmniItems.length} 个链接加入后台并行队列，可随时切换阅读其他文章`);
+      onTasksEnqueued?.();
+      return;
+    }
+
     let payload: RawSourcePayload | null = attachedFilePayload;
 
     if (!payload) {
       if (!trimmed) {
-        setErrorMsg("请粘贴文章 / 论文 / 视频或 GitHub 链接，输入研究主题，或拖入 PDF / 源码文件。");
+        setErrorMsg("请粘贴文章 / 论文 / 视频或 GitHub 链接（支持多行批量），输入研究主题，或拖入 PDF / 源码文件。");
         return;
       }
       const kind = smartDetection.detectedKind ?? "text";
@@ -338,31 +381,27 @@ export function WorkspaceHome({
       }
     }
 
-    setIsAnalyzing(true);
-    setProgressPct(6);
-    setProgressText("正在准备解析管线...");
+    enqueueBackgroundAnalysis({
+      modeId: activePlugin.id,
+      title: attachedTitle || undefined,
+      payload,
+      llmConfig,
+      speedMode: analysisSpeedMode,
+    });
 
-    try {
-      const completedDoc = await runStreamedAnalysis({
-        modeId: activePlugin.id,
-        title: attachedTitle || undefined,
-        payload,
-        llmConfig,
-        onProgress: (pct, text) => {
-          if (!mountedRef.current) return;
-          setProgressPct(pct);
-          setProgressText(text);
-        },
-      });
-      onDocumentReady(completedDoc);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setErrorMsg(err instanceof Error ? err.message : "解析过程中出现错误，请检查网络或 AI 接口配置。");
-      setIsAnalyzing(false);
-    }
+    setOmniText("");
+    setAttachedFilePayload(null);
+    setAttachedFileLabel("");
+    setAttachedTitle("");
+    setManualModeLocked(false);
+    showFeedback("已加入后台并行解析队列，可继续添加下一篇或阅读其他文章");
+    onTasksEnqueued?.();
   };
 
   const apiConfigured = Boolean(llmConfig.apiKey.trim());
+  const hasActiveTasks = analysisTasks.some(
+    (t) => t.status === "running" || t.status === "queued"
+  );
   const isDark = themeMode === "aurora";
   const stageBadgeCls = isDark ? STAGE_BADGE_DARK_CLS : STAGE_BADGE_LIGHT_CLS;
   const headerCls = getPanelGlassTextClasses(themeMode);
@@ -442,6 +481,13 @@ export function WorkspaceHome({
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 electron-no-drag shrink-0">
+            <TasksTopbarPill
+              tasks={analysisTasks}
+              themeMode={themeMode}
+              open={tasksDockOpen}
+              onToggle={() => onToggleTasksDock?.()}
+            />
+
             <button
               type="button"
               data-testid="home-theme-btn"
@@ -474,7 +520,7 @@ export function WorkspaceHome({
               type="button"
               data-testid="home-open-settings-btn"
               onClick={onOpenSettings}
-              className={`inline-flex items-center gap-1 sm:gap-1.5 text-xs font-medium px-1.5 sm:px-2.5 py-1 rounded-lg cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
+              className={`relative inline-flex items-center gap-1 sm:gap-1.5 text-xs font-medium px-1.5 sm:px-2.5 py-1 rounded-lg cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
                 isDark
                   ? "text-slate-100 hover:text-white hover:bg-white/12"
                   : "text-[#1a2744] hover:bg-[#1a2744]/8"
@@ -486,6 +532,13 @@ export function WorkspaceHome({
               </svg>
               <span className="hidden sm:inline">设置与导出</span>
               <span className="sm:hidden">设置</span>
+              {hasAppUpdate && (
+                <span
+                  data-testid="settings-update-dot"
+                  aria-label="发现新版本"
+                  className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"
+                />
+              )}
             </button>
           </div>
         </div>
@@ -598,29 +651,33 @@ export function WorkspaceHome({
                 setOmniText(e.target.value);
                 if (!e.target.value.trim()) setManualModeLocked(false);
                 if (errorMsg) setErrorMsg("");
+                if (queueFeedbackMsg) setQueueFeedbackMsg("");
               }}
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                   e.preventDefault();
-                  void handleAnalyzeSubmit();
+                  handleAnalyzeSubmit();
                 }
               }}
               placeholder={
                 activePlugin?.id === "repo-deconstruct"
-                  ? "粘贴 GitHub 仓库链接，或直接拖入本地源码文件，亦可描述想拆解的系统机制..."
+                  ? "粘贴 GitHub 仓库链接（支持多行同时解析多篇），或拖入源码文件..."
                   : activePlugin?.id === "cognitive-essay"
-                    ? "粘贴抖音 / B站 / YouTube / X 分享链接，或整篇长文与播客文稿..."
-                    : "粘贴 arXiv 论文链接 / ID、网页文章 URL、研究主题关键词，或直接拖入 PDF..."
+                    ? "粘贴抖音 / B站 / YouTube / X 分享链接（支持多行批量），或整篇长文..."
+                    : "粘贴 arXiv 论文链接 / ID、网页文章（支持多行批量提交）、关键词，或拖入 PDF..."
               }
-              disabled={isAnalyzing}
               className="w-full resize-none bg-transparent border-0 outline-none text-sm leading-relaxed placeholder:opacity-60"
               style={{ color: "var(--prism-ink)" }}
             />
 
-            {smartDetection.hint && !isAnalyzing && (
+            {(batchOmniItems || smartDetection.hint) && (
               <div className={`mt-2 flex items-center gap-1.5 text-[11.5px] font-mono ${isDark ? "text-amber-300" : "text-amber-600"}`}>
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
-                <span>{smartDetection.hint}</span>
+                <span>
+                  {batchOmniItems
+                    ? `已识别 ${batchOmniItems.length} 条链接，点击即可同时并行后台解析`
+                    : smartDetection.hint}
+                </span>
               </div>
             )}
 
@@ -640,7 +697,6 @@ export function WorkspaceHome({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isAnalyzing}
                   className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border cursor-pointer transition-colors hover:border-amber-500/50"
                   style={{
                     borderColor: "var(--prism-border)",
@@ -657,7 +713,6 @@ export function WorkspaceHome({
                   type="button"
                   data-testid="home-open-studio-btn"
                   onClick={onOpenStudio}
-                  disabled={isAnalyzing}
                   className="text-xs px-2.5 py-1.5 rounded-lg border cursor-pointer transition-colors hover:border-amber-500/50"
                   style={{
                     borderColor: "var(--prism-border)",
@@ -665,6 +720,34 @@ export function WorkspaceHome({
                   }}
                 >
                   高级定制
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="home-speed-toggle"
+                  onClick={() =>
+                    setAnalysisSpeedMode(analysisSpeedMode === "fast" ? "balanced" : "fast")
+                  }
+                  title="点击切换解析速度策略（极速模式精简字段输出并提升至 5 路并发；标准精读保留全量深度批注与 4 路并发）"
+                  className={`font-mono text-[11px] px-2.5 py-1.5 rounded-lg border cursor-pointer transition-colors ${
+                    analysisSpeedMode === "fast"
+                      ? isDark
+                        ? "bg-amber-400/18 text-amber-200 border-amber-300/45 hover:bg-amber-400/24"
+                        : "bg-amber-500/12 text-amber-800 border-amber-500/40 hover:bg-amber-500/18"
+                      : isDark
+                        ? "border-white/15 text-slate-300 hover:border-white/30"
+                        : "hover:border-amber-500/50"
+                  }`}
+                  style={
+                    analysisSpeedMode === "balanced" && !isDark
+                      ? {
+                          borderColor: "var(--prism-border)",
+                          color: "var(--prism-ink-muted)",
+                        }
+                      : undefined
+                  }
+                >
+                  {analysisSpeedMode === "fast" ? "极速模式 · 5并发" : "标准精读 · 4并发"}
                 </button>
 
                 <button
@@ -690,11 +773,10 @@ export function WorkspaceHome({
               <button
                 type="button"
                 data-testid="home-omni-submit"
-                onClick={() => void handleAnalyzeSubmit()}
+                onClick={handleAnalyzeSubmit}
                 onMouseEnter={() => setSubmitHovered(true)}
                 onMouseLeave={() => setSubmitHovered(false)}
-                disabled={isAnalyzing}
-                className={`group inline-flex items-center gap-2.5 font-mono text-xs font-semibold pl-2.5 pr-4 py-1.5 rounded-full disabled:opacity-80 cursor-pointer transition-all shadow-sm ${
+                className={`group inline-flex items-center gap-2.5 font-mono text-xs font-semibold pl-2.5 pr-4 py-1.5 rounded-full cursor-pointer transition-all shadow-sm ${
                   isDark
                     ? "bg-amber-300 text-[#0f172a] hover:bg-amber-200 hover:shadow-md"
                     : "prism-on-dark bg-[#1a2744] text-amber-200 hover:bg-[#24365c] hover:shadow-md"
@@ -709,46 +791,40 @@ export function WorkspaceHome({
                     size={26}
                     dots={7}
                     state={
-                      (isAnalyzing
-                        ? "thinking"
-                        : omniText.trim() || attachedFilePayload || omniFocused || submitHovered
-                          ? "listening"
-                          : "idle") satisfies MatrixOrbState
+                      (omniText.trim() || attachedFilePayload || omniFocused || submitHovered
+                        ? "listening"
+                        : "idle") satisfies MatrixOrbState
                     }
                     color={isDark ? "#9a3412" : "#FF8F1F"}
                     showLabel={false}
                   />
                 </span>
-                <span>{isAnalyzing ? "正在精读拆解..." : "开始精读解析"}</span>
-                {!isAnalyzing && (
-                  <span className="transition-transform duration-150 group-hover:translate-x-0.5">
-                    →
-                  </span>
-                )}
+                <span>{hasActiveTasks ? "加入并行解析" : "开始精读解析"}</span>
+                <span className="transition-transform duration-150 group-hover:translate-x-0.5">
+                  →
+                </span>
               </button>
             </div>
 
-            {isAnalyzing && (
-              <div className="mt-3 space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <AiStatus
-                    state={resolveAnalyzeAiState(progressPct)}
-                    detail={progressText || "正在处理..."}
-                    className="h-7 text-[12.5px]"
-                  />
-                  <span
-                    className="font-mono text-[11px] shrink-0"
-                    style={{ color: "var(--prism-ink-muted)" }}
+            {queueFeedbackMsg && (
+              <div
+                data-testid="home-queue-feedback"
+                className={`mt-2.5 px-3 py-1.5 rounded-xl border text-xs font-mono flex items-center justify-between gap-2 ${
+                  isDark
+                    ? "bg-emerald-400/12 border-emerald-300/35 text-emerald-200"
+                    : "bg-emerald-500/10 border-emerald-500/30 text-emerald-700"
+                }`}
+              >
+                <span>{queueFeedbackMsg}</span>
+                {onToggleTasksDock && (
+                  <button
+                    type="button"
+                    onClick={onToggleTasksDock}
+                    className="underline cursor-pointer shrink-0"
                   >
-                    {progressPct}%
-                  </span>
-                </div>
-                <div className="h-1.5 w-full rounded-full overflow-hidden bg-slate-500/15">
-                  <div
-                    className="h-full bg-amber-500 transition-all duration-300"
-                    style={{ width: `${Math.max(4, progressPct)}%` }}
-                  />
-                </div>
+                    查看任务队列
+                  </button>
+                )}
               </div>
             )}
 

@@ -7,6 +7,12 @@ import {
   PRESET_MODELS_BY_PROVIDER,
   type DiscoveredModelItem,
 } from "@/core/engine/model-discovery";
+import {
+  APP_VERSION,
+  createInitialUpdateState,
+  formatBytes,
+  type AppUpdateState,
+} from "@/core/engine/app-updater";
 import type { WorkbenchThemeMode } from "@/store/workbench-store";
 import { ThemeSelector } from "@/components/ui/theme-selector";
 import {
@@ -14,7 +20,7 @@ import {
   PanelGlassHeader,
 } from "@/components/ui/fluid-orb";
 
-export type SettingsSectionKey = "view" | "export" | "llm";
+export type SettingsSectionKey = "view" | "export" | "llm" | "update";
 
 interface SettingsModalProps {
   open: boolean;
@@ -25,6 +31,14 @@ interface SettingsModalProps {
   autoHideHeader: boolean;
   themeMode?: WorkbenchThemeMode;
   initialFocusSection?: SettingsSectionKey | null;
+  updateState?: AppUpdateState;
+  isDesktopRuntime?: boolean;
+  onCheckForUpdates?: () => void;
+  onDownloadUpdate?: () => void;
+  onCancelDownload?: () => void;
+  onInstallUpdate?: () => void;
+  onOpenReleasePage?: (url?: string) => void;
+  onRevealDownloadedFile?: () => void;
   onThemeChange?: (theme: WorkbenchThemeMode) => void;
   onToggleSecondary: () => void;
   onToggleNotes: () => void;
@@ -146,6 +160,14 @@ export function SettingsModal({
   autoHideHeader,
   themeMode = "paper",
   initialFocusSection = null,
+  updateState: updateStateProp,
+  isDesktopRuntime = false,
+  onCheckForUpdates,
+  onDownloadUpdate,
+  onCancelDownload,
+  onInstallUpdate,
+  onOpenReleasePage,
+  onRevealDownloadedFile,
   onThemeChange,
   onToggleSecondary,
   onToggleNotes,
@@ -165,6 +187,7 @@ export function SettingsModal({
     view: true,
     export: true,
     llm: true,
+    update: true,
   });
 
   const [modelQuery, setModelQuery] = useState("");
@@ -186,9 +209,10 @@ export function SettingsModal({
         view: initialFocusSection === "view",
         export: initialFocusSection === "export",
         llm: initialFocusSection === "llm",
+        update: initialFocusSection === "update",
       });
     } else {
-      setOpenSections({ view: true, export: true, llm: true });
+      setOpenSections({ view: true, export: true, llm: true, update: true });
     }
   }, [open, config, initialFocusSection]);
 
@@ -234,10 +258,11 @@ export function SettingsModal({
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const allExpanded = openSections.view && openSections.export && openSections.llm;
+  const allExpanded =
+    openSections.view && openSections.export && openSections.llm && openSections.update;
   const toggleAllSections = () => {
     const next = !allExpanded;
-    setOpenSections({ view: next, export: next, llm: next });
+    setOpenSections({ view: next, export: next, llm: next, update: next });
   };
 
   const handleFetchModels = async () => {
@@ -279,9 +304,20 @@ export function SettingsModal({
     }
   };
 
+  const updateState = updateStateProp ?? createInitialUpdateState(APP_VERSION, isDesktopRuntime);
   const viewSummary = `当前 ${THEME_LABELS[themeMode]} · ${autoHideHeader ? "自动收起顶栏" : "固定顶栏"}`;
   const exportSummary = `单元 ${doc.units.length} 条 · Markdown / Anki / HTML`;
   const llmSummary = `${PROVIDER_DEFAULTS[draft.provider].label} · ${draft.model || "未填模型"}`;
+  const updateSummary =
+    updateState.status === "downloading"
+      ? `正在下载 v${updateState.latestVersion ?? ""} (${updateState.progressPercent}%)`
+      : updateState.status === "downloaded"
+        ? `新版本 v${updateState.latestVersion ?? ""} 已就绪`
+        : updateState.hasUpdate && updateState.latestVersion
+          ? `发现新版本 v${updateState.latestVersion}`
+          : updateState.status === "up-to-date"
+            ? `v${updateState.currentVersion} 已是最新`
+            : `当前 v${updateState.currentVersion}`;
   const headerCls = getPanelGlassTextClasses(themeMode);
 
   return (
@@ -306,7 +342,7 @@ export function SettingsModal({
                 工作台设置、视图与导出中心
               </h2>
               <p className={`text-xs ${headerCls.subtitle}`}>
-                三大设置模块均可按需折叠展开：视图主题、导出归档、AI 接口与模型检索。
+                四大设置模块均可按需折叠展开：视图主题、导出归档、AI 接口与版本更新。
               </p>
             </div>
           }
@@ -652,6 +688,184 @@ export function SettingsModal({
                 </button>
               </div>
             </form>
+          </CollapsibleSection>
+
+          {/* Section 4: App Version & Online Self-Update */}
+          <CollapsibleSection
+            sectionKey="update"
+            title="4. 应用版本与在线更新"
+            summary={updateSummary}
+            isOpen={openSections.update}
+            onToggle={() => toggleSection("update")}
+          >
+            <div className="space-y-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#e5decb] bg-[#fcfaf5] px-3.5 py-2.5">
+                <div className="space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono font-bold text-[#1a2744]">
+                      当前版本 v{updateState.currentVersion}
+                    </span>
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-[#ddd6c7] bg-white text-slate-600">
+                      {isDesktopRuntime ? "桌面应用模式" : "Web 浏览器模式"}
+                    </span>
+                    {updateState.status === "up-to-date" && (
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        已是最新版本
+                      </span>
+                    )}
+                    {updateState.hasUpdate && updateState.latestVersion && (
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 font-semibold">
+                        可升级至 v{updateState.latestVersion}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    {updateState.checkedAt
+                      ? `上次检查：${new Date(updateState.checkedAt).toLocaleTimeString()} ${
+                          updateState.latestVersion ? `· 最新发布 v${updateState.latestVersion}` : ""
+                        }`
+                      : "点击右侧「检查更新」获取 GitHub Releases 最新版本信息。"}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid="settings-check-update-btn"
+                    disabled={
+                      !onCheckForUpdates ||
+                      updateState.status === "checking" ||
+                      updateState.status === "downloading" ||
+                      updateState.status === "installing"
+                    }
+                    onClick={() => onCheckForUpdates?.()}
+                    className="font-mono text-[11px] px-3 py-1.5 rounded-full border border-[#ddd6c7] bg-white hover:bg-[#f3efe6] text-[#1a2744] font-medium disabled:opacity-50 cursor-pointer transition-colors"
+                  >
+                    {updateState.status === "checking" ? "正在检查..." : "检查更新"}
+                  </button>
+
+                  {updateState.status === "available" && (
+                    <button
+                      type="button"
+                      data-testid="settings-download-update-btn"
+                      onClick={() => onDownloadUpdate?.()}
+                      className="prism-on-dark font-mono text-[11px] px-3.5 py-1.5 rounded-full bg-[#1a2744] hover:bg-[#24365c] text-white font-semibold cursor-pointer transition-colors"
+                    >
+                      {isDesktopRuntime ? "立即下载更新" : "下载安装包"}
+                    </button>
+                  )}
+
+                  {updateState.status === "downloaded" && (
+                    <button
+                      type="button"
+                      data-testid="settings-install-update-btn"
+                      onClick={() => onInstallUpdate?.()}
+                      className="prism-on-dark font-mono text-[11px] px-3.5 py-1.5 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer transition-colors"
+                    >
+                      {updateState.installMode === "self-replace"
+                        ? "重启并安装更新"
+                        : updateState.assetName?.endsWith(".dmg")
+                          ? "打开 DMG 安装包"
+                          : "运行安装程序并重启"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {updateState.status === "downloading" && (
+                <div
+                  data-testid="settings-update-progress"
+                  className="rounded-lg border border-amber-200 bg-amber-50/70 px-3.5 py-2.5 space-y-1.5"
+                >
+                  <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-amber-950">
+                    <span>
+                      正在下载 {updateState.assetName || `v${updateState.latestVersion ?? ""}`} ·{" "}
+                      {updateState.progressPercent}%
+                    </span>
+                    <button
+                      type="button"
+                      data-testid="settings-cancel-update-btn"
+                      onClick={() => onCancelDownload?.()}
+                      className="px-2 py-0.5 rounded border border-amber-300 bg-white hover:bg-amber-100 text-amber-900 cursor-pointer"
+                    >
+                      取消
+                    </button>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-amber-100 overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 transition-all duration-150"
+                      style={{ width: `${Math.max(4, updateState.progressPercent)}%` }}
+                    />
+                  </div>
+                  <div className="text-[11px] text-amber-900/80 font-mono">
+                    {`${formatBytes(updateState.transferredBytes)} / ${formatBytes(
+                      updateState.totalBytes || updateState.assetSize || 0
+                    )}${updateState.bytesPerSecond > 0 ? ` · ${formatBytes(updateState.bytesPerSecond)}/s` : ""}`}
+                  </div>
+                </div>
+              )}
+
+              {updateState.status === "downloaded" && updateState.downloadedFilePath && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-[11px] text-emerald-950">
+                  <span className="truncate font-mono">
+                    已缓存：{updateState.assetName || updateState.downloadedFilePath}
+                  </span>
+                  {onRevealDownloadedFile && (
+                    <button
+                      type="button"
+                      onClick={() => onRevealDownloadedFile()}
+                      className="shrink-0 font-mono underline hover:no-underline cursor-pointer"
+                    >
+                      在文件夹中显示
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {updateState.status === "installing" && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-900">
+                  正在安全关闭本地引擎并应用新版本，请稍候…
+                </div>
+              )}
+
+              {updateState.status === "error" && updateState.error && (
+                <div
+                  data-testid="settings-update-error"
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-800"
+                >
+                  {updateState.error}
+                </div>
+              )}
+
+              {updateState.releaseNotes && (
+                <div className="rounded-lg border border-[#e5decb] bg-white px-3 py-2.5 space-y-1">
+                  <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                    v{updateState.latestVersion ?? ""} 更新说明
+                  </div>
+                  <div className="max-h-28 overflow-y-auto whitespace-pre-wrap text-[11px] leading-relaxed text-slate-700">
+                    {updateState.releaseNotes}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[11px] text-slate-500">
+                <span>
+                  {updateState.assetName
+                    ? `匹配安装包：${updateState.assetName}${
+                        updateState.assetSize ? ` (${formatBytes(updateState.assetSize)})` : ""
+                      }`
+                    : "支持 macOS (.dmg) 与 Windows (NSIS .exe) 增量检测"}
+                </span>
+                <button
+                  type="button"
+                  data-testid="settings-open-release-btn"
+                  onClick={() => onOpenReleasePage?.(updateState.releaseUrl)}
+                  className="font-mono text-[#1a2744] underline hover:no-underline cursor-pointer"
+                >
+                  查看 GitHub 发布页
+                </button>
+              </div>
+            </div>
           </CollapsibleSection>
         </div>
       </div>

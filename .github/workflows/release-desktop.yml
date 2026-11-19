@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.1)"
+        description: "Release tag name (e.g. v1.1.2)"
         required: true
-        default: "v1.1.1"
+        default: "v1.1.2"
 
 permissions:
   contents: write
@@ -39,13 +39,19 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           cat <<'EOF' > /tmp/release-notes.md
+          ### v1.1.2 主要更新
+
+          - **极速与标准并发解析提速**：LLM 请求超时优化与分块并发调度（标准精读 4 并发 / 极速模式 5 并发），明显缩短长文、论文与仓库解析等待时间。
+          - **后台多篇并行解析（任务坞）**：支持多条 URL / 多文件同时入队后台解析；切换阅读其他文章或进入阅读视图时解析不中断，右下角任务坞实时追踪进度。
+          - **App 内检查更新与一键升级**：支持启动静默检测、设置中心与系统菜单手动检查更新、桌面端进度条下载更新包、macOS 自动替换 `.app` 重启及 Windows 拉起 NSIS 安装向导。
+
           ### 安装与首次运行说明
 
-          - **macOS（Apple Silicon `arm64` / Intel `x64`）**：本版本为开源自签名版（未购 Apple 开发者公证证书）。将 `PurrParse.app` 拖入「应用程序」后，若因浏览器隔离属性触发“**已损坏，无法打开**”提示，在终端运行一次下方命令即可正常启动：
+          - **macOS（Apple Silicon `arm64` / Intel `x64`）**：本版本为开源自签名版（未购 Apple 开发者公证证书）。通过浏览器手动下载拖入「应用程序」后，若触发“**已损坏，无法打开**”提示，在终端运行一次下方命令即可正常启动：
             ```sh
             xattr -cr /Applications/PurrParse.app
             ```
-          - **Windows（`x64` / `ARM64`）**：若安装或运行前触发 Microsoft Defender SmartScreen 安全拦截，点击「**更多信息**」→「**仍要运行**」即可。`v1.1.1` 已完成 `.next/standalone` 依赖树扁平化（移除超深 `.pnpm` 嵌套路径并解决 `MAX_PATH` 限制）及启动环境诊断增强。
+          - **Windows（`x64` / `ARM64`）**：若安装或运行前触发 Microsoft Defender SmartScreen 安全拦截，点击「**更多信息**」→「**仍要运行**」即可。已包含 `.next/standalone` 依赖树扁平化（移除超深 `.pnpm` 嵌套路径并解决 `MAX_PATH` 限制）及启动环境诊断增强。
           EOF
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" --notes-file /tmp/release-notes.md

@@ -28,6 +28,9 @@ if (isV2tAvailable()) {
 const AnalyzeRequestSchema = z.object({
   modeId: z.string().min(1),
   title: z.string().optional(),
+  speedMode: z.enum(["balanced", "fast"]).optional(),
+  batchSize: z.number().int().min(1).max(12).optional(),
+  concurrency: z.number().int().min(1).max(6).optional(),
   payload: z.object({
     title: z.string().optional(),
     kind: z.enum(["text", "pdf-base64", "repo-url", "repo-files", "remote-url", "search-query"]),
@@ -61,7 +64,7 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(`Invalid request payload: ${parsed.error.message}`, { status: 400 });
   }
 
-  const { modeId, title, payload, llmConfig } = parsed.data;
+  const { modeId, title, speedMode, batchSize, concurrency, payload, llmConfig } = parsed.data;
   if (!defaultPluginRegistry.has(modeId)) {
     return new Response(`Unknown workbench mode plugin: ${modeId}`, { status: 400 });
   }
@@ -73,8 +76,14 @@ export async function POST(req: Request): Promise<Response> {
       : undefined;
 
   const encoder = new TextEncoder();
+  let streamClosed = false;
   const enqueueEvent = (controller: ReadableStreamDefaultController<Uint8Array>, obj: unknown) => {
-    controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`));
+    if (streamClosed || req.signal.aborted) return;
+    try {
+      controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`));
+    } catch {
+      streamClosed = true;
+    }
   };
 
   const stream = new ReadableStream<Uint8Array>({
@@ -104,16 +113,32 @@ export async function POST(req: Request): Promise<Response> {
 
         for await (const event of runChunkedAnalysis(plugin, effectivePayload, {
           titleOverride: effectiveTitle,
+          speedMode,
+          batchSize,
+          concurrency,
+          abortSignal: req.signal,
           generator,
         })) {
           enqueueEvent(controller, event);
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unexpected analysis error";
-        enqueueEvent(controller, { type: "error", message });
+        if (!req.signal.aborted && !(err instanceof Error && err.name === "AbortError")) {
+          const message = err instanceof Error ? err.message : "Unexpected analysis error";
+          enqueueEvent(controller, { type: "error", message });
+        }
       } finally {
-        controller.close();
+        if (!streamClosed) {
+          streamClosed = true;
+          try {
+            controller.close();
+          } catch {
+            // already closed
+          }
+        }
       }
+    },
+    cancel() {
+      streamClosed = true;
     },
   });
 

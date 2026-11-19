@@ -1,10 +1,11 @@
-const { app, BrowserWindow, Menu, dialog, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
+const { createDesktopUpdater } = require("./updater.cjs");
 
 const PREFERRED_PORT = 18923;
 const APP_TITLE = "PurrParse";
@@ -14,6 +15,7 @@ let serverProcess = null;
 let serverOrigin = null;
 let isQuitting = false;
 let logStream = null;
+let desktopUpdater = null;
 
 function createSplashDataUrl() {
   const html = `<!doctype html>
@@ -274,6 +276,25 @@ function isAllowedInternalUrl(rawUrl) {
   }
 }
 
+function triggerMenuCheckForUpdates() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    mainWindow.webContents.send("purrparse:menu-check-updates");
+  }
+}
+
+function registerUpdaterIpcHandlers() {
+  if (!desktopUpdater) return;
+  ipcMain.handle("purrparse:updater:get-state", () => desktopUpdater.getState());
+  ipcMain.handle("purrparse:updater:check", () => desktopUpdater.checkForUpdates());
+  ipcMain.handle("purrparse:updater:download", () => desktopUpdater.downloadUpdate());
+  ipcMain.handle("purrparse:updater:cancel", () => desktopUpdater.cancelDownload());
+  ipcMain.handle("purrparse:updater:install", () => desktopUpdater.installUpdate());
+  ipcMain.handle("purrparse:updater:reveal", () => desktopUpdater.revealDownloadedFile());
+  ipcMain.handle("purrparse:updater:open-release", (_event, url) => desktopUpdater.openReleasePage(url));
+}
+
 function buildAppMenu() {
   const isMac = process.platform === "darwin";
   const template = [
@@ -283,6 +304,10 @@ function buildAppMenu() {
             label: APP_TITLE,
             submenu: [
               { role: "about", label: "关于 PurrParse" },
+              {
+                label: "检查更新…",
+                click: triggerMenuCheckForUpdates,
+              },
               { type: "separator" },
               { role: "services" },
               { type: "separator" },
@@ -342,6 +367,25 @@ function buildAppMenu() {
         ...(isMac ? [{ type: "separator" }, { role: "front", label: "前置全部窗口" }] : []),
       ],
     },
+    ...(!isMac
+      ? [
+          {
+            label: "帮助",
+            submenu: [
+              {
+                label: "检查更新…",
+                click: triggerMenuCheckForUpdates,
+              },
+              {
+                label: "前往下载主页",
+                click: () => {
+                  shell.openExternal("https://purrparse.xyz");
+                },
+              },
+            ],
+          },
+        ]
+      : []),
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -411,6 +455,13 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(async () => {
+    desktopUpdater = createDesktopUpdater({
+      app,
+      shell,
+      stopServer: stopEmbeddedServer,
+      getMainWindow: () => mainWindow,
+    });
+    registerUpdaterIpcHandlers();
     buildAppMenu();
     createMainWindow();
 
@@ -446,10 +497,12 @@ if (!gotSingleInstanceLock) {
 
   app.on("before-quit", () => {
     isQuitting = true;
+    desktopUpdater?.dispose();
     stopEmbeddedServer();
   });
 
   app.on("will-quit", () => {
+    desktopUpdater?.dispose();
     stopEmbeddedServer();
   });
 

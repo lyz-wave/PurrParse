@@ -1,30 +1,25 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { AiStatus, resolveAnalyzeAiState } from "@/components/ui/ai-status";
 import {
   getPanelGlassTextClasses,
-  getTopbarGlassStyle,
   PanelGlassHeader,
-  TopbarGlassBackdrop,
 } from "@/components/ui/fluid-orb";
-import type { WorkbenchThemeMode } from "@/store/workbench-store";
+import { useWorkbenchStore, type WorkbenchThemeMode } from "@/store/workbench-store";
 import type { WorkbenchDocument } from "@/core/contracts/document-ast";
 import type { RawSourcePayload } from "@/core/contracts/mode-plugin";
 import type { LLMConfig } from "@/core/engine/llm-adapters";
 import { defaultPluginRegistry } from "@/plugins";
-import {
-  detectOmniSource,
-  filesToSourcePayload,
-  runStreamedAnalysis,
-} from "./analyze-client";
+import { enqueueBackgroundAnalysis } from "./analysis-task-manager";
+import { detectOmniSource, filesToSourcePayload } from "./analyze-client";
 
 interface IngestionStudioModalProps {
   open: boolean;
   llmConfig: LLMConfig;
   themeMode?: WorkbenchThemeMode;
   onClose: () => void;
-  onCreated: (doc: WorkbenchDocument) => void;
+  onCreated?: (doc: WorkbenchDocument) => void;
+  onTaskEnqueued?: () => void;
 }
 
 type InputTab = "text-or-file" | "remote-url" | "agent-search";
@@ -34,8 +29,11 @@ export function IngestionStudioModal({
   llmConfig,
   themeMode = "paper",
   onClose,
-  onCreated,
+  onTaskEnqueued,
 }: IngestionStudioModalProps) {
+  const analysisSpeedMode = useWorkbenchStore((s) => s.analysisSpeedMode);
+  const setAnalysisSpeedMode = useWorkbenchStore((s) => s.setAnalysisSpeedMode);
+
   const plugins = useMemo(() => defaultPluginRegistry.list(), []);
   const videoPlugin = useMemo(
     () => plugins.find((p) => p.inputConfig.acceptedFileTypes?.includes(".srt")),
@@ -54,50 +52,11 @@ export function IngestionStudioModal({
   const [userBackground, setUserBackground] = useState("");
   const [userTopic, setUserTopic] = useState("");
   const [showCustomContext, setShowCustomContext] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
-  const [backgroundStreaming, setBackgroundStreaming] = useState(false);
-  const [hasLivePreview, setHasLivePreview] = useState(false);
-  const [progressText, setProgressText] = useState("");
-  const [progressPct, setProgressPct] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
 
   const headerCls = getPanelGlassTextClasses(themeMode);
 
-  if (!open && !backgroundStreaming) return null;
-
-  if (!open && backgroundStreaming) {
-    return (
-      <div
-        style={getTopbarGlassStyle(themeMode)}
-        className={`fixed bottom-4 left-4 z-50 w-80 rounded-2xl border shadow-2xl p-3.5 text-xs overflow-hidden ${
-          headerCls.isDark
-            ? "border-sky-400/25 text-slate-100"
-            : "border-[#c6b79c]/60 text-[#1a2744]"
-        }`}
-      >
-        <TopbarGlassBackdrop themeMode={themeMode} />
-        <div className="relative z-10">
-          <div className="flex items-center justify-between gap-2 mb-1.5 font-mono">
-            <span className={`truncate font-semibold ${headerCls.heading}`}>[后台流式生成中]</span>
-            <span>{progressPct}%</span>
-          </div>
-          <div className={`text-[11px] truncate mb-2 ${headerCls.subtitle}`}>{progressText}</div>
-          <div
-            className={`w-full h-1.5 rounded-full overflow-hidden ${
-              headerCls.isDark ? "bg-white/15" : "bg-[#1a2744]/12"
-            }`}
-          >
-            <div
-              className={`h-full transition-all duration-300 ${
-                headerCls.isDark ? "bg-amber-300" : "bg-[#1a2744]"
-              }`}
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!open) return null;
 
   const activePlugin = plugins.find((p) => p.id === selectedModeId) ?? plugins[0];
   const hasRemoteInput = Boolean(
@@ -190,7 +149,7 @@ export function IngestionStudioModal({
     return null;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
 
@@ -200,44 +159,25 @@ export function IngestionStudioModal({
       return;
     }
 
-    setIsRunning(true);
-    setHasLivePreview(false);
-    setBackgroundStreaming(false);
+    enqueueBackgroundAnalysis({
+      modeId: activePlugin.id,
+      title: title.trim() || undefined,
+      payload,
+      llmConfig,
+      speedMode: analysisSpeedMode,
+    });
 
-    try {
-      const completedDoc = await runStreamedAnalysis({
-        modeId: activePlugin.id,
-        title: title.trim() || undefined,
-        payload,
-        llmConfig,
-        onProgress: (pct, text) => {
-          setProgressPct(pct);
-          setProgressText(text);
-        },
-        onPartialDocument: (partial) => {
-          onCreated(partial);
-          setHasLivePreview(true);
-        },
-      });
-
-      onCreated(completedDoc);
-      onClose();
-      setBackgroundStreaming(false);
-      setHasLivePreview(false);
-      setTextInput("");
-      setRemoteUrl("");
-      setSearchQuery("");
-      setUploadedPayload(null);
-      setUploadedLabel("");
-      setTitle("");
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "生成工作台失败");
-      setBackgroundStreaming(false);
-    } finally {
-      setIsRunning(false);
-      setBackgroundStreaming(false);
-    }
+    setTextInput("");
+    setRemoteUrl("");
+    setSearchQuery("");
+    setUploadedPayload(null);
+    setUploadedLabel("");
+    setTitle("");
+    onTaskEnqueued?.();
+    onClose();
   };
+
+  const isRunning = false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[1px]">
@@ -528,62 +468,49 @@ export function IngestionStudioModal({
             )}
           </div>
 
-          {isRunning && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <AiStatus
-                  state={resolveAnalyzeAiState(progressPct)}
-                  detail={progressText}
-                  className="h-7 text-[12.5px]"
-                />
-                <span className="text-xs font-mono text-blue-900 shrink-0">{progressPct}%</span>
-              </div>
-              <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#1a2744] transition-all duration-300"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-              {hasLivePreview && (
-                <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-blue-900">
-                  <span>顶层导读与前序内容已上屏，可边看边等待后续批次补齐。</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBackgroundStreaming(true);
-                      onClose();
-                    }}
-                    className="font-mono px-2.5 py-1 rounded bg-[#1a2744] text-white hover:bg-[#24365c] shrink-0 cursor-pointer"
-                  >
-                    [边看边后台生成]
-                  </button>
-                </div>
-              )}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#ddd6c7]">
+            <div className="inline-flex items-center gap-1 rounded-lg border border-[#ddd6c7] bg-white p-0.5 font-mono text-[11px]">
+              <button
+                type="button"
+                data-testid="studio-speed-balanced"
+                onClick={() => setAnalysisSpeedMode("balanced")}
+                className={`px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
+                  analysisSpeedMode === "balanced"
+                    ? "bg-[#1a2744] text-amber-200 font-semibold"
+                    : "text-slate-600 hover:text-[#1a2744]"
+                }`}
+              >
+                标准精读 · 4并发
+              </button>
+              <button
+                type="button"
+                data-testid="studio-speed-fast"
+                onClick={() => setAnalysisSpeedMode("fast")}
+                className={`px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
+                  analysisSpeedMode === "fast"
+                    ? "bg-amber-400/25 text-amber-900 font-semibold"
+                    : "text-slate-600 hover:text-[#1a2744]"
+                }`}
+              >
+                极速模式 · 5并发
+              </button>
             </div>
-          )}
 
-          {errorMsg && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-3.5 py-2.5 text-xs">
-              {errorMsg}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="font-mono text-xs px-3.5 py-2 rounded border border-[#ddd6c7] bg-white hover:bg-slate-100 cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                className="font-mono text-xs px-4 py-2 rounded bg-[#1a2744] hover:bg-[#24365c] text-white font-semibold cursor-pointer"
+              >
+                加入后台并行解析
+              </button>
             </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#ddd6c7]">
-            <button
-              type="button"
-              disabled={isRunning}
-              onClick={onClose}
-              className="font-mono text-xs px-3.5 py-2 rounded border border-[#ddd6c7] bg-white hover:bg-slate-100 cursor-pointer disabled:opacity-50"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={isRunning}
-              className="font-mono text-xs px-4 py-2 rounded bg-[#1a2744] hover:bg-[#24365c] text-white font-semibold cursor-pointer disabled:opacity-60"
-            >
-              {isRunning ? "正在检索与编译..." : "开始精读与编译工作台"}
-            </button>
           </div>
         </form>
       </div>

@@ -12,6 +12,8 @@ import type {
 } from "@/core/contracts/mode-plugin";
 import type { StructuredObjectGenerator } from "./llm-adapters";
 
+export type AnalysisSpeedMode = "balanced" | "fast";
+
 export type AnalysisStreamEvent =
   | {
       type: "status";
@@ -54,6 +56,9 @@ export type AnalysisStreamEvent =
 
 export interface OrchestratorOptions {
   batchSize?: number;
+  concurrency?: number;
+  speedMode?: AnalysisSpeedMode;
+  abortSignal?: AbortSignal;
   titleOverride?: string;
   generator?: StructuredObjectGenerator;
 }
@@ -101,17 +106,109 @@ export function buildCompletionChecklist(
   };
 }
 
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    const err = new Error("分析任务已取消");
+    err.name = "AbortError";
+    throw err;
+  }
+}
+
+function appendPromptModeHint(
+  prompt: string,
+  stage: "top-model" | "batch" | "bottom",
+  speedMode: AnalysisSpeedMode
+): string {
+  if (stage === "top-model") {
+    return speedMode === "fast"
+      ? `${prompt}\n\n【极速精简模式】请大幅压缩单字段篇幅：卡片正文限 1 句，glossary 保留 3~4 条，fadedExamples 仅生成 level=1 的 1 个示例，designChoices 限 2~3 条，章节 summary 每项不超过 1 句话，确保极快输出完整 JSON。`
+      : `${prompt}\n\n【输出控制】请保持字段简洁凝练（卡片正文每条 1~2 句，章节 summary 每项 1~2 句，术语定义各 1 句），确保单轮完整输出合法 JSON 不截断。`;
+  }
+  if (speedMode === "fast") {
+    if (stage === "batch") {
+      return `${prompt}\n\n【极速精简模式】每单元 secondaryBlockText 保留准确流畅意译，tldr 限 1 句，notes 4 条各限 1~2 句核心要点，highlights 每段最多 3 条最关键短语。`;
+    }
+    return `${prompt}\n\n【极速精简模式】底部各模块保持完整结构但每条内容精炼到 1 句话，socratic-qa 输出 3 题，控制整体长度实现快速响应。`;
+  }
+  return prompt;
+}
+
+function createAsyncEventQueue<T>() {
+  const buffer: T[] = [];
+  let closed = false;
+  let failure: unknown = null;
+  let hasFailure = false;
+  let waitingResolver: ((res: IteratorResult<T>) => void) | null = null;
+  let waitingRejecter: ((err: unknown) => void) | null = null;
+
+  return {
+    push(item: T) {
+      if (closed || hasFailure) return;
+      if (waitingResolver) {
+        const resolve = waitingResolver;
+        waitingResolver = null;
+        waitingRejecter = null;
+        resolve({ value: item, done: false });
+      } else {
+        buffer.push(item);
+      }
+    },
+    close() {
+      if (closed || hasFailure) return;
+      closed = true;
+      if (waitingResolver) {
+        const resolve = waitingResolver;
+        waitingResolver = null;
+        waitingRejecter = null;
+        resolve({ value: undefined as T, done: true });
+      }
+    },
+    fail(err: unknown) {
+      if (closed || hasFailure) return;
+      hasFailure = true;
+      failure = err;
+      if (waitingRejecter) {
+        const reject = waitingRejecter;
+        waitingResolver = null;
+        waitingRejecter = null;
+        reject(err);
+      }
+    },
+    [Symbol.asyncIterator](): AsyncIterator<T> {
+      return {
+        next() {
+          if (buffer.length > 0) {
+            return Promise.resolve({ value: buffer.shift() as T, done: false });
+          }
+          if (hasFailure) {
+            return Promise.reject(failure);
+          }
+          if (closed) {
+            return Promise.resolve({ value: undefined as T, done: true });
+          }
+          return new Promise<IteratorResult<T>>((resolve, reject) => {
+            waitingResolver = resolve;
+            waitingRejecter = reject;
+          });
+        },
+      };
+    },
+  };
+}
+
 /**
  * ChunkedAnalysisEngine:
  * Splits arbitrarily long inputs into deterministic chunks, generates top mental model,
- * streams batch-by-batch structured annotations, and synthesizes bottom workbench blocks.
- * Falls back cleanly to plugin.createHeuristicDocument when no LLM generator is supplied.
+ * streams parallel batch & bottom structured annotations cleanly via a bounded worker pool,
+ * and falls back cleanly to plugin.createHeuristicDocument when no LLM generator is supplied.
  */
 export async function* runChunkedAnalysis(
   plugin: WorkbenchModePlugin,
   payload: RawSourcePayload,
   options: OrchestratorOptions = {}
 ): AsyncGenerator<AnalysisStreamEvent, WorkbenchDocument, void> {
+  throwIfAborted(options.abortSignal);
+
   yield {
     type: "status",
     phase: "ingesting",
@@ -120,13 +217,15 @@ export async function* runChunkedAnalysis(
   };
 
   const sourceUnits = await plugin.preprocessSource(payload);
+  throwIfAborted(options.abortSignal);
+
   if (sourceUnits.length === 0) {
     throw new Error("未能从输入中解析出有效内容单元，请检查输入文本、PDF 文件或链接地址。");
   }
 
   // Resolve final document title AFTER preprocessSource so fetched arXiv/Web/GitHub metadata can populate payload.title
   const docTitle = options.titleOverride?.trim() || payload.title?.trim() || plugin.name;
-  const docId = `${plugin.id}-${Date.now()}`;
+  const docId = `${plugin.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const createdAt = new Date().toISOString();
   const promptContext = {
     readingPurpose: payload.readingPurpose,
@@ -197,20 +296,37 @@ export async function* runChunkedAnalysis(
   }
 
   const generator = options.generator;
+  const speedMode: AnalysisSpeedMode = options.speedMode ?? "balanced";
+  const batchSize = options.batchSize ?? (speedMode === "fast" ? 8 : 6);
+  const concurrency = Math.max(
+    1,
+    Math.min(6, options.concurrency ?? (speedMode === "fast" ? 5 : 4))
+  );
 
   // Step 1: Global Mental Model & Section Skeleton
+  throwIfAborted(options.abortSignal);
   yield {
     type: "status",
     phase: "top-model",
-    message: "[PHASE 1/3] 正在构建全局认知脚手架、预测试、SVG 拓扑图与术语词典...",
-    progress: 20,
+    message: `[PHASE 1/3] 正在构建全局认知脚手架、拓扑图与术语词典（${
+      speedMode === "fast" ? "极速" : "标准"
+    } · ${concurrency}路并发）...`,
+    progress: 18,
   };
 
   const topOutput = await generator.generate({
-    prompt: plugin.buildPrompts.topModelPrompt(docTitle, sourceUnits, promptContext),
+    prompt: appendPromptModeHint(
+      plugin.buildPrompts.topModelPrompt(docTitle, sourceUnits, promptContext),
+      "top-model",
+      speedMode
+    ),
     schema: plugin.schemas.topMentalModel,
     schemaName: `${plugin.id}_top_mental_model`,
+    abortSignal: options.abortSignal,
+    maxTokens: speedMode === "fast" ? 4096 : 6144,
   });
+
+  throwIfAborted(options.abortSignal);
 
   liveDoc.title = topOutput.title || docTitle;
   liveDoc.subtitle = topOutput.subtitle;
@@ -229,104 +345,216 @@ export async function* runChunkedAnalysis(
     partialDocument: { ...liveDoc, units: [...liveDoc.units] },
   };
 
-  // Step 2: Sliding-Window Batch Unit Annotations
-  const batchSize = options.batchSize ?? 4;
+  // Step 2 & 3 Combined Parallel Worker Pool (Batches + Bottom Workbench)
   const batches = chunkArray(sourceUnits, batchSize);
   const allSectionIds = Array.from(new Set(sourceUnits.map((u) => u.sectionId)));
-  const hydratedUnits: WorkbenchUnit[] = [];
+  const baselineById = new Map(liveDoc.units.map((u) => [u.id, u]));
+  const hydratedById = new Map<string, WorkbenchUnit>();
 
-  for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i];
-    const progress = 25 + Math.round(((i + 1) / batches.length) * 55);
-    yield {
-      type: "status",
-      phase: "batch",
-      message: `[PHASE 2/3] 正在逐段深度批注第 ${i + 1} / ${batches.length} 批（共 ${batch.length} 个单元）...`,
-      progress,
-    };
+  const totalWorkUnits = batches.length + 1;
+  const activeWorkers = Math.min(concurrency, totalWorkUnits);
+  const queue = createAsyncEventQueue<AnalysisStreamEvent>();
 
-    const batchResult = await generator.generate({
-      prompt: plugin.buildPrompts.batchUnitsPrompt(
-        batch,
-        topOutput.globalContextSummary,
-        allSectionIds
-      ),
-      schema: plugin.schemas.batchUnits,
-      schemaName: `${plugin.id}_batch_${i + 1}`,
-    });
-
-    const batchMap = new Map(batchResult.units.map((u) => [u.unitId, u]));
-    const batchHydrated: WorkbenchUnit[] = batch.map((src, idx) => {
-      const matched = batchMap.get(src.id) ?? batchResult.units[idx];
-      if (!matched) {
-        return {
-          id: src.id,
-          unitCode: src.unitCode,
-          sectionId: src.sectionId,
-          sectionTitle: src.sectionTitle,
-          sectionTask: src.sectionTask,
-          weight: "support",
-          tldr: `${src.sectionTitle} (${src.unitCode})`,
-          primaryKind: src.primaryKind,
-          codeLanguage: src.codeLanguage,
-          filePath: src.metadata?.filePath,
-          primaryText: src.rawPrimaryText,
-          highlights: [],
-          secondaryBlockText: "该批次未返回对应译文/状态追踪，可点击重新生成或手动补充笔记。",
-          notes: [],
-        };
-      }
-      return plugin.hydrateUnit(src, matched);
-    });
-
-    hydratedUnits.push(...batchHydrated);
-    // Replace processed prefix in liveDoc.units while preserving remaining heuristic units
-    const hydratedById = new Map(hydratedUnits.map((u) => [u.id, u]));
-    liveDoc.units = liveDoc.units.map((existing) => hydratedById.get(existing.id) ?? existing);
-    liveDoc.updatedAt = new Date().toISOString();
-
-    yield {
-      type: "unit-batch",
-      batchIndex: i + 1,
-      totalBatches: batches.length,
-      units: batchHydrated,
-      partialDocument: { ...liveDoc, units: [...liveDoc.units] },
-    };
-  }
-
-  // Step 3: Bottom Synthesis / Actionable Workbench / Interview Arsenal
   yield {
     type: "status",
-    phase: "bottom",
-    message: "[PHASE 3/3] 正在生成底部全局复盘、主张-证据表与交错自测...",
-    progress: 88,
+    phase: "batch",
+    message: `[PHASE 2/3] 正在并行拆解 ${batches.length} 批正文 + 底部复盘（${activeWorkers} 路并发）...`,
+    progress: 26,
   };
 
-  const bottomOutput = await generator.generate({
-    prompt: plugin.buildPrompts.bottomWorkbenchPrompt(
-      docTitle,
-      sourceUnits,
-      topOutput,
-      promptContext
-    ),
-    schema: plugin.schemas.bottomWorkbench,
-    schemaName: `${plugin.id}_bottom_workbench`,
+  type PoolTask =
+    | { kind: "batch"; index: number; batch: SourceUnit[] }
+    | { kind: "bottom" };
+
+  const workItems: PoolTask[] = [
+    ...batches.map((batch, index): PoolTask => ({ kind: "batch", index, batch })),
+    { kind: "bottom" },
+  ];
+
+  let cursor = 0;
+  let completedBatches = 0;
+  let completedBottom = false;
+  let failedBatchCount = 0;
+  let firstBatchError: unknown = null;
+
+  const computePoolProgress = () =>
+    26 + Math.min(68, Math.round(((completedBatches + (completedBottom ? 1 : 0)) / totalWorkUnits) * 68));
+
+  const workers = Array.from({ length: activeWorkers }, async () => {
+    while (true) {
+      throwIfAborted(options.abortSignal);
+      const nextIdx = cursor++;
+      if (nextIdx >= workItems.length) return;
+      const task = workItems[nextIdx];
+
+      if (task.kind === "batch") {
+        try {
+          const batchResult = await generator.generate({
+            prompt: appendPromptModeHint(
+              plugin.buildPrompts.batchUnitsPrompt(
+                task.batch,
+                topOutput.globalContextSummary,
+                allSectionIds
+              ),
+              "batch",
+              speedMode
+            ),
+            schema: plugin.schemas.batchUnits,
+            schemaName: `${plugin.id}_batch_${task.index + 1}`,
+            abortSignal: options.abortSignal,
+            maxTokens: speedMode === "fast" ? 5120 : 8192,
+          });
+
+          const batchMap = new Map(batchResult.units.map((u) => [u.unitId, u]));
+          const batchHydrated: WorkbenchUnit[] = task.batch.map((src, idx) => {
+            const matched = batchMap.get(src.id) ?? batchResult.units[idx];
+            if (!matched) {
+              return {
+                id: src.id,
+                unitCode: src.unitCode,
+                sectionId: src.sectionId,
+                sectionTitle: src.sectionTitle,
+                sectionTask: src.sectionTask,
+                weight: "support",
+                tldr: `${src.sectionTitle} (${src.unitCode})`,
+                primaryKind: src.primaryKind,
+                codeLanguage: src.codeLanguage,
+                filePath: src.metadata?.filePath,
+                primaryText: src.rawPrimaryText,
+                highlights: [],
+                secondaryBlockText: "该批次未返回对应译文/状态追踪，可点击重新生成或手动补充笔记。",
+                notes: [],
+              };
+            }
+            return plugin.hydrateUnit(src, matched);
+          });
+
+          for (const u of batchHydrated) {
+            hydratedById.set(u.id, u);
+          }
+          liveDoc.units = sourceUnits.map(
+            (src) => hydratedById.get(src.id) ?? baselineById.get(src.id)!
+          );
+          liveDoc.updatedAt = new Date().toISOString();
+          completedBatches += 1;
+
+          queue.push({
+            type: "unit-batch",
+            batchIndex: completedBatches,
+            totalBatches: batches.length,
+            units: batchHydrated,
+            partialDocument: { ...liveDoc, units: [...liveDoc.units] },
+          });
+          queue.push({
+            type: "status",
+            phase: "batch",
+            message: `[PHASE 2/3] 已并行完成 ${completedBatches}/${batches.length} 批正文${
+              completedBottom ? " + 底部复盘" : ""
+            }...`,
+            progress: computePoolProgress(),
+          });
+        } catch (err) {
+          if (options.abortSignal?.aborted || (err instanceof Error && err.name === "AbortError")) {
+            throw err;
+          }
+          failedBatchCount += 1;
+          if (!firstBatchError) firstBatchError = err;
+
+          if (batches.length === 1 || failedBatchCount === batches.length) {
+            throw err;
+          }
+
+          // Graceful degradation for an isolated batch failure inside multi-batch runs
+          const fallbackUnits: WorkbenchUnit[] = task.batch.map((src) => {
+            const base = baselineById.get(src.id)!;
+            return {
+              ...base,
+              secondaryBlockText: "该批次请求异常，已保留原文与基础结构（可稍后重试该篇）。",
+            };
+          });
+          for (const u of fallbackUnits) {
+            hydratedById.set(u.id, u);
+          }
+          liveDoc.units = sourceUnits.map(
+            (src) => hydratedById.get(src.id) ?? baselineById.get(src.id)!
+          );
+          liveDoc.updatedAt = new Date().toISOString();
+          completedBatches += 1;
+
+          queue.push({
+            type: "unit-batch",
+            batchIndex: completedBatches,
+            totalBatches: batches.length,
+            units: fallbackUnits,
+            partialDocument: { ...liveDoc, units: [...liveDoc.units] },
+          });
+        }
+      } else {
+        const bottomOutput = await generator.generate({
+          prompt: appendPromptModeHint(
+            plugin.buildPrompts.bottomWorkbenchPrompt(
+              docTitle,
+              sourceUnits,
+              topOutput,
+              promptContext
+            ),
+            "bottom",
+            speedMode
+          ),
+          schema: plugin.schemas.bottomWorkbench,
+          schemaName: `${plugin.id}_bottom_workbench`,
+          abortSignal: options.abortSignal,
+          maxTokens: speedMode === "fast" ? 4096 : 6144,
+        });
+
+        liveDoc.bottomTitle = bottomOutput.bottomTitle;
+        liveDoc.bottomSubtitle = bottomOutput.bottomSubtitle;
+        liveDoc.bottomBlocks = bottomOutput.bottomBlocks;
+        liveDoc.updatedAt = new Date().toISOString();
+        completedBottom = true;
+
+        queue.push({
+          type: "bottom",
+          bottomTitle: bottomOutput.bottomTitle,
+          bottomSubtitle: bottomOutput.bottomSubtitle,
+          bottomBlocks: bottomOutput.bottomBlocks,
+          partialDocument: { ...liveDoc, units: [...liveDoc.units] },
+        });
+        queue.push({
+          type: "status",
+          phase: "bottom",
+          message:
+            completedBatches >= batches.length
+              ? "[PHASE 3/3] 底部复盘与论证矩阵已生成..."
+              : `[PHASE 2/3] 底部复盘已就绪，已完成 ${completedBatches}/${batches.length} 批正文...`,
+          progress: computePoolProgress(),
+        });
+      }
+    }
   });
 
-  liveDoc.bottomTitle = bottomOutput.bottomTitle;
-  liveDoc.bottomSubtitle = bottomOutput.bottomSubtitle;
-  liveDoc.bottomBlocks = bottomOutput.bottomBlocks;
-  liveDoc.units = hydratedUnits;
+  void Promise.all(workers).then(
+    () => {
+      if (failedBatchCount === batches.length && firstBatchError) {
+        queue.fail(firstBatchError);
+      } else {
+        queue.close();
+      }
+    },
+    (err) => {
+      queue.fail(err);
+    }
+  );
+
+  for await (const ev of queue) {
+    yield ev;
+  }
+
+  throwIfAborted(options.abortSignal);
+
+  liveDoc.units = sourceUnits.map((src) => hydratedById.get(src.id) ?? baselineById.get(src.id)!);
   liveDoc.updatedAt = new Date().toISOString();
   liveDoc.completionChecklist = buildCompletionChecklist(liveDoc, true);
-
-  yield {
-    type: "bottom",
-    bottomTitle: bottomOutput.bottomTitle,
-    bottomSubtitle: bottomOutput.bottomSubtitle,
-    bottomBlocks: bottomOutput.bottomBlocks,
-    partialDocument: { ...liveDoc },
-  };
 
   yield {
     type: "status",

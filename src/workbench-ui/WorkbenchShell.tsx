@@ -11,6 +11,11 @@ import {
 } from "@/components/ui/proximity-sidebar";
 import { RailToc } from "@/components/ui/rail-toc";
 import { BackJumpFloater } from "./BackJumpFloater";
+import {
+  cancelBackgroundAnalysis,
+  retryBackgroundAnalysis,
+} from "./analysis-task-manager";
+import { BackgroundTasksDock, TasksTopbarPill } from "./BackgroundTasksDock";
 import { BottomArsenalRenderer } from "./BottomArsenalRenderer";
 import { isMacDesktopRuntime } from "./desktop-runtime";
 import { DualColumnRow } from "./DualColumnRow";
@@ -24,6 +29,8 @@ import { SelectionQaModal, type SelectionQaOpenPayload } from "./SelectionQaModa
 import { SettingsModal, type SettingsSectionKey } from "./SettingsModal";
 import { SubNavBar } from "./SubNavBar";
 import { TopMentalPanel } from "./TopMentalPanel";
+import { UpdateBanner } from "./UpdateBanner";
+import { useAppUpdater } from "./use-app-updater";
 import { WorkspaceHome } from "./WorkspaceHome";
 
 interface SelectionPillState {
@@ -77,12 +84,15 @@ export function WorkbenchShell() {
     pureLangMode,
     flashUnitId,
     onboardingOpen,
+    analysisTasks,
     hydrateFromStorage,
     openOnboarding,
     completeOnboarding,
     setActiveDocument,
     openDocumentForReview,
     upsertDocument,
+    removeAnalysisTask,
+    clearFinishedAnalysisTasks,
     deleteDocument,
     autoOrganizeLibrary,
     updateDocumentLibraryMeta,
@@ -144,6 +154,15 @@ export function WorkbenchShell() {
   const [selectionPill, setSelectionPill] = useState<SelectionPillState | null>(null);
   const [selectionCopied, setSelectionCopied] = useState(false);
   const [isMacDesktop, setIsMacDesktop] = useState(false);
+  const [tasksDockOpen, setTasksDockOpen] = useState(false);
+
+  const appUpdater = useAppUpdater({
+    autoCheck: true,
+    onMenuCheckRequest: () => {
+      setSettingsFocusSection("update");
+      setSettingsOpen(true);
+    },
+  });
 
   const isPureMode = readingDepthMode === "pure";
   const isReviewMode = readingDepthMode === "review";
@@ -376,8 +395,12 @@ export function WorkbenchShell() {
           llmConfig={llmConfig}
           themeMode={themeMode}
           startOnHome={startOnHome}
+          tasksDockOpen={tasksDockOpen}
+          hasAppUpdate={appUpdater.state.hasUpdate}
           onThemeChange={setThemeMode}
           onToggleStartOnHome={toggleStartOnHome}
+          onToggleTasksDock={() => setTasksDockOpen((p) => !p)}
+          onTasksEnqueued={() => setTasksDockOpen(true)}
           onOpenDocument={(docId) => setActiveDocument(docId)}
           onOpenReview={(docId) => openDocumentForReview(docId)}
           onOpenLibrary={(originEl) => openLibraryFrom(originEl)}
@@ -391,7 +414,6 @@ export function WorkbenchShell() {
             setSettingsOpen(true);
           }}
           onOpenOnboarding={openOnboarding}
-          onDocumentReady={(doc) => upsertDocument(doc)}
         />
       ) : (
         <>
@@ -415,6 +437,15 @@ export function WorkbenchShell() {
                 hideNotes={hideNotes}
                 themeMode={themeMode}
                 readingDepthMode={readingDepthMode}
+                hasAppUpdate={appUpdater.state.hasUpdate}
+                tasksPill={
+                  <TasksTopbarPill
+                    tasks={analysisTasks}
+                    themeMode={themeMode}
+                    open={tasksDockOpen}
+                    onToggle={() => setTasksDockOpen((p) => !p)}
+                  />
+                }
                 onThemeChange={setThemeMode}
                 onReadingDepthChange={setReadingDepthMode}
                 onToggleDim={toggleDimFilter}
@@ -761,6 +792,7 @@ export function WorkbenchShell() {
         themeMode={themeMode}
         onClose={() => setStudioOpen(false)}
         onCreated={(doc) => upsertDocument(doc)}
+        onTaskEnqueued={() => setTasksDockOpen(true)}
       />
 
       <SettingsModal
@@ -773,6 +805,14 @@ export function WorkbenchShell() {
         themeMode={themeMode}
         startOnHome={startOnHome}
         initialFocusSection={settingsFocusSection}
+        updateState={appUpdater.state}
+        isDesktopRuntime={appUpdater.isDesktopRuntime}
+        onCheckForUpdates={() => void appUpdater.checkForUpdates()}
+        onDownloadUpdate={() => void appUpdater.downloadUpdate()}
+        onCancelDownload={() => void appUpdater.cancelDownload()}
+        onInstallUpdate={() => void appUpdater.installUpdate()}
+        onOpenReleasePage={(url) => void appUpdater.openReleasePage(url)}
+        onRevealDownloadedFile={() => void appUpdater.revealDownloadedFile()}
         onThemeChange={setThemeMode}
         onToggleStartOnHome={toggleStartOnHome}
         onToggleSecondary={toggleHideSecondary}
@@ -873,6 +913,37 @@ export function WorkbenchShell() {
         }}
         onJumpToUnit={(targetId, originId) => jumpToUnit(targetId, originId)}
         onClose={() => setSelectionQaPayload(null)}
+      />
+
+      <BackgroundTasksDock
+        tasks={analysisTasks}
+        themeMode={themeMode}
+        open={tasksDockOpen}
+        isPureMode={viewMode === "reader" && isPureMode}
+        onToggleOpen={() => setTasksDockOpen((p) => !p)}
+        onOpenDocument={(docId) => setActiveDocument(docId)}
+        onCancelTask={(taskId) => cancelBackgroundAnalysis(taskId)}
+        onRetryTask={(taskId) => {
+          retryBackgroundAnalysis(taskId);
+        }}
+        onRemoveTask={(taskId) => removeAnalysisTask(taskId)}
+        onClearFinished={() => clearFinishedAnalysisTasks()}
+      />
+
+      <UpdateBanner
+        state={appUpdater.state}
+        isDesktopRuntime={appUpdater.isDesktopRuntime}
+        dismissed={appUpdater.isBannerDismissed}
+        hidden={settingsOpen || (viewMode === "reader" && isPureMode)}
+        themeMode={themeMode}
+        onDownload={() => void appUpdater.downloadUpdate()}
+        onCancelDownload={() => void appUpdater.cancelDownload()}
+        onInstall={() => void appUpdater.installUpdate()}
+        onOpenSettings={() => {
+          setSettingsFocusSection("update");
+          setSettingsOpen(true);
+        }}
+        onDismiss={() => appUpdater.dismissBanner()}
       />
     </div>
   );

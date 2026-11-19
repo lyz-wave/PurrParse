@@ -1,6 +1,6 @@
 import type { WorkbenchDocument } from "@/core/contracts/document-ast";
 import type { RawSourcePayload, WorkbenchModePlugin } from "@/core/contracts/mode-plugin";
-import type { AnalysisStreamEvent } from "@/core/engine/chunk-orchestrator";
+import type { AnalysisSpeedMode, AnalysisStreamEvent } from "@/core/engine/chunk-orchestrator";
 import type { LLMConfig } from "@/core/engine/llm-adapters";
 import { extractUrlFromShareText } from "@/core/engine/social-url";
 
@@ -154,6 +154,10 @@ export interface StreamedAnalysisParams {
   title?: string;
   payload: RawSourcePayload;
   llmConfig: LLMConfig;
+  speedMode?: AnalysisSpeedMode;
+  batchSize?: number;
+  concurrency?: number;
+  signal?: AbortSignal;
   onProgress: (pct: number, text: string) => void;
   onPartialDocument?: (doc: WorkbenchDocument) => void;
 }
@@ -166,6 +170,10 @@ export async function runStreamedAnalysis({
   title,
   payload,
   llmConfig,
+  speedMode = "balanced",
+  batchSize,
+  concurrency,
+  signal,
   onProgress,
   onPartialDocument,
 }: StreamedAnalysisParams): Promise<WorkbenchDocument> {
@@ -179,9 +187,13 @@ export async function runStreamedAnalysis({
   const response = await fetch("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal,
     body: JSON.stringify({
       modeId,
       title: title?.trim() || undefined,
+      speedMode,
+      batchSize,
+      concurrency,
       payload,
       llmConfig: llmConfig.apiKey.trim() ? llmConfig : undefined,
     }),
@@ -197,37 +209,56 @@ export async function runStreamedAnalysis({
   let buffer = "";
   let completedDoc: WorkbenchDocument | null = null;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+  const processLine = (rawLine: string) => {
+    const trimmed = rawLine.trim();
+    if (!trimmed) return;
+    const event = JSON.parse(trimmed) as AnalysisStreamEvent | { type: "error"; message: string };
+    if (event.type === "status") {
+      onProgress(event.progress, event.message);
+    } else if (event.type === "source-ready") {
+      onProgress(22, `已清洗提取 ${event.totalUnits} 个单元，开始深度解析...`);
+    } else if (event.type === "top-model") {
+      onProgress(40, "已构建顶层心智模型与架构图（可提前进入阅读）...");
+      if (event.partialDocument) onPartialDocument?.(event.partialDocument);
+    } else if (event.type === "unit-batch") {
+      const pct = Math.min(86, 35 + Math.round((event.batchIndex / Math.max(1, event.totalBatches)) * 50));
+      onProgress(pct, `已完成批注批次 ${event.batchIndex}/${event.totalBatches}...`);
+      if (event.partialDocument) onPartialDocument?.(event.partialDocument);
+    } else if (event.type === "bottom") {
+      onProgress(92, "已生成底部实战与复盘军火库...");
+      if (event.partialDocument) onPartialDocument?.(event.partialDocument);
+    } else if (event.type === "error") {
+      throw new Error(event.message);
+    } else if (event.type === "complete") {
+      completedDoc = event.document;
+      onProgress(100, "精读工作台已就绪");
+    }
+  };
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const event = JSON.parse(trimmed) as AnalysisStreamEvent | { type: "error"; message: string };
-      if (event.type === "status") {
-        onProgress(event.progress, event.message);
-      } else if (event.type === "source-ready") {
-        onProgress(22, `已清洗提取 ${event.totalUnits} 个单元，开始深度解析...`);
-      } else if (event.type === "top-model") {
-        onProgress(45, "已构建顶层心智模型与架构图...");
-        if (event.partialDocument) onPartialDocument?.(event.partialDocument);
-      } else if (event.type === "unit-batch") {
-        const pct = 50 + Math.round(((event.batchIndex + 1) / Math.max(1, event.totalBatches)) * 32);
-        onProgress(pct, `已完成批注批次 ${event.batchIndex}/${event.totalBatches}...`);
-        if (event.partialDocument) onPartialDocument?.(event.partialDocument);
-      } else if (event.type === "bottom") {
-        onProgress(92, "已生成底部实战与复盘军火库...");
-        if (event.partialDocument) onPartialDocument?.(event.partialDocument);
-      } else if (event.type === "error") {
-        throw new Error(event.message);
-      } else if (event.type === "complete") {
-        completedDoc = event.document;
-        onProgress(100, "精读工作台已就绪");
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        const abortErr = new Error("分析任务已取消");
+        abortErr.name = "AbortError";
+        throw abortErr;
       }
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        processLine(line);
+      }
+    }
+
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      processLine(buffer);
+    }
+  } finally {
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => {});
     }
   }
 

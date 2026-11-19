@@ -272,4 +272,206 @@ describe("ChunkedAnalysisEngine & PluginRegistry Extensibility", () => {
     expect(md).toContain("Claim 1");
     expect(html).toContain("00. Patent Map");
   });
+
+  it("executes batch and bottom tasks concurrently and preserves original unit order despite out-of-order completion", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let callIndex = 0;
+
+    const mockGenerator: StructuredObjectGenerator = {
+      async generate<T>({ schemaName }: { schemaName: string }): Promise<T> {
+        callIndex += 1;
+        if (schemaName.endsWith("_top_mental_model")) {
+          const top: TopModelStepOutput = {
+            title: "Parallel Paper",
+            subtitle: "Concurrency Test",
+            badges: ["FAST"],
+            globalContextSummary: "CTX_PARALLEL",
+            topMentalModel: {
+              title: "00. Parallel Map",
+              subtitle: "Sub",
+              cards: [{ tag: "Thesis", body: "Core Claim" }],
+              diagram: {
+                title: "Flow",
+                hint: "Hint",
+                nodes: [{ id: "n1", label: "Node 1", targetUnitId: "sec-1-p1" }],
+                edges: [],
+              },
+              glossaryTitle: "Glossary",
+              glossary: [{ term: "Concurrency", definition: "Parallel pool" }],
+            },
+            sections: [
+              { id: "sec-1", navLabel: "1. Intro", title: "1. Introduction", taskBadge: "Task" },
+            ],
+          };
+          return top as T;
+        }
+
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        try {
+          if (schemaName.endsWith("_batch_1")) {
+            // Delay batch 1 longer than batch 2 & bottom so completion arrives out-of-order
+            await new Promise((r) => setTimeout(r, 45));
+            return {
+              units: [
+                {
+                  unitId: "sec-1-p1",
+                  weight: "core",
+                  tldr: "BATCH1_FIRST",
+                  secondaryBlockText: "中文第一段",
+                  highlights: [],
+                  notes: [{ body: "a" }, { body: "b" }, { body: "c" }, { body: "d" }],
+                },
+                {
+                  unitId: "sec-1-p2",
+                  weight: "support",
+                  tldr: "BATCH1_SECOND",
+                  secondaryBlockText: "中文第二段",
+                  highlights: [],
+                  notes: [{ body: "a" }, { body: "b" }, { body: "c" }, { body: "d" }],
+                },
+              ],
+            } as T;
+          }
+          if (schemaName.endsWith("_batch_2")) {
+            await new Promise((r) => setTimeout(r, 10));
+            return {
+              units: [
+                {
+                  unitId: "sec-1-p3",
+                  weight: "support",
+                  tldr: "BATCH2_THIRD",
+                  secondaryBlockText: "中文第三段",
+                  highlights: [],
+                  notes: [{ body: "a" }, { body: "b" }, { body: "c" }, { body: "d" }],
+                },
+                {
+                  unitId: "sec-1-p4",
+                  weight: "core",
+                  tldr: "BATCH2_FOURTH",
+                  secondaryBlockText: "中文第四段",
+                  highlights: [],
+                  notes: [{ body: "a" }, { body: "b" }, { body: "c" }, { body: "d" }],
+                },
+              ],
+            } as T;
+          }
+
+          await new Promise((r) => setTimeout(r, 5));
+          const bottom: BottomStepOutput = {
+            bottomTitle: "08. Bottom",
+            bottomBlocks: [{ type: "statement-banner", tag: "DONE", body: "Parallel done" }],
+          };
+          return bottom as T;
+        } finally {
+          inFlight -= 1;
+        }
+      },
+    };
+
+    const fourUnits = [
+      "1. Introduction",
+      "Paragraph one explains scaled dot-product attention in transformer encoders across deep sequence layers, examining how query and key dot products scale by inverse square root dimension to keep softmax gradients stable across long academic benchmarks and diverse training regimes.",
+      "Paragraph two discusses residual connections and layer normalization across stacked sublayers, demonstrating how identity skip paths mitigate vanishing gradients and preserve stable representation magnitudes from bottom token embeddings to final classifier heads.",
+      "Paragraph three examines multi-head projections across parallel representation subspaces, enabling the attention mechanism to jointly attend to syntactic dependencies and semantic coreference relations across distant positions without sequential recurrence bottlenecks.",
+      "Paragraph four evaluates BLEU translation scores and training wall-clock efficiency on standard WMT English-to-German and English-to-French benchmarks, establishing consistent quality improvements alongside substantial parallel hardware utilization gains.",
+    ].join("\n\n");
+
+    const gen = runChunkedAnalysis(
+      academicPaperPlugin,
+      { kind: "text", content: fourUnits },
+      { generator: mockGenerator, batchSize: 2, concurrency: 3 }
+    );
+
+    let finalDoc: WorkbenchDocument | undefined;
+    while (true) {
+      const next = await gen.next();
+      if (next.done) {
+        finalDoc = next.value;
+        break;
+      }
+    }
+
+    expect(callIndex).toBe(4);
+    expect(maxInFlight).toBeGreaterThanOrEqual(2);
+    expect(finalDoc?.units.map((u) => u.tldr)).toEqual([
+      "BATCH1_FIRST",
+      "BATCH1_SECOND",
+      "BATCH2_THIRD",
+      "BATCH2_FOURTH",
+    ]);
+  });
+
+  it("uses larger batches and fast prompts in speedMode='fast' and respects abortSignal", async () => {
+    const batchSchemas: string[] = [];
+    const seenPrompts: string[] = [];
+    const fastGenerator: StructuredObjectGenerator = {
+      async generate<T>({
+        schemaName,
+        prompt,
+      }: {
+        schemaName: string;
+        prompt: string;
+      }): Promise<T> {
+        seenPrompts.push(prompt);
+        if (schemaName.includes("_batch_")) {
+          batchSchemas.push(schemaName);
+          return { units: [] } as T;
+        }
+        if (schemaName.endsWith("_top_mental_model")) {
+          return {
+            title: "Fast Doc",
+            subtitle: "Sub",
+            badges: [],
+            globalContextSummary: "CTX",
+            topMentalModel: {
+              title: "00",
+              subtitle: "s",
+              cards: [{ tag: "T", body: "B" }],
+              diagram: { title: "D", hint: "H", nodes: [], edges: [] },
+              glossaryTitle: "G",
+              glossary: [],
+            },
+            sections: [{ id: "sec-1", navLabel: "1", title: "1. Intro", taskBadge: "T" }],
+          } as T;
+        }
+        return {
+          bottomTitle: "08",
+          bottomBlocks: [{ type: "statement-banner", tag: "DONE", body: "Fast" }],
+        } as T;
+      },
+    };
+
+    const nineParas = [
+      "1. Introduction",
+      ...Array.from(
+        { length: 9 },
+        (_, i) =>
+          `Paragraph number ${i + 1} presents detailed empirical evidence about sequence modeling architectures, gradient flow stability, representation capacity, and parallel training throughput across large-scale NLP and multimodal benchmarks without collapsing adjacent paragraphs.`
+      ),
+    ].join("\n\n");
+
+    const fastGen = runChunkedAnalysis(
+      academicPaperPlugin,
+      { kind: "text", content: nineParas },
+      { generator: fastGenerator, speedMode: "fast" }
+    );
+    while (!(await fastGen.next()).done) {
+      // drain
+    }
+
+    // 9 units with fast batchSize=8 -> 2 batches
+    expect(batchSchemas).toHaveLength(2);
+    expect(seenPrompts.some((p) => p.includes("极速精简模式"))).toBe(true);
+
+    const abortController = new AbortController();
+    abortController.abort();
+    const abortedGen = runChunkedAnalysis(
+      academicPaperPlugin,
+      { kind: "text", content: nineParas },
+      { generator: fastGenerator, abortSignal: abortController.signal }
+    );
+    await expect(abortedGen.next()).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

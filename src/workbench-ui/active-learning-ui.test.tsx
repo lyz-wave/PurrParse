@@ -25,9 +25,19 @@ import { SectionSummaryCard } from "./SectionSummaryCard";
 import { SelectionQaModal } from "./SelectionQaModal";
 import { SettingsModal } from "./SettingsModal";
 import { TopMentalPanel } from "./TopMentalPanel";
+import { UpdateBanner } from "./UpdateBanner";
+import { useAppUpdater } from "./use-app-updater";
+import { createInitialUpdateState } from "@/core/engine/app-updater";
 import { WorkbenchShell } from "./WorkbenchShell";
 import { WorkspaceHome } from "./WorkspaceHome";
 import { detectOmniSource } from "./analyze-client";
+import {
+  cancelBackgroundAnalysis,
+  enqueueBackgroundAnalysis,
+  resetAnalysisTaskManagerForTests,
+  splitOmniBatchInputs,
+} from "./analysis-task-manager";
+import { BackgroundTasksDock, TasksTopbarPill } from "./BackgroundTasksDock";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   computeDocumentLearningStats,
@@ -2179,5 +2189,368 @@ describe("Active-Learning UI Components (Blind & Mode-Agnostic)", () => {
     );
     assertHeaderHasFog(tour.container, "onboarding-tour-header", "aurora");
     tour.unmount();
+  });
+
+  it("splits multi-line URLs for concurrent batch analysis and keeps background tasks running across article navigation without hijacking focus", async () => {
+    const plugins = defaultPluginRegistry.list();
+    const multiUrls = [
+      "https://arxiv.org/pdf/1512.03385",
+      "https://github.com/vercel/next.js",
+    ].join("\n");
+
+    const parsedBatch = splitOmniBatchInputs(multiUrls, plugins);
+    expect(parsedBatch).toHaveLength(2);
+    expect(parsedBatch?.[0]).toMatchObject({
+      rawLine: "https://arxiv.org/pdf/1512.03385",
+      suggestedModeId: "academic-paper",
+      detectedKind: "remote-url",
+    });
+    expect(parsedBatch?.[1]).toMatchObject({
+      rawLine: "https://github.com/vercel/next.js",
+      suggestedModeId: "repo-deconstruct",
+      detectedKind: "repo-url",
+    });
+
+    const multiLineProse = [
+      "First sentence explaining why background queues keep reading uninterrupted.",
+      "Second sentence explaining why prose should remain a single document job.",
+    ].join("\n");
+    expect(splitOmniBatchInputs(multiLineProse, plugins)).toBeNull();
+
+    const initialDocs = useWorkbenchStore.getState().documents;
+    const initialActiveId = initialDocs[0].id;
+    useWorkbenchStore.setState({
+      documents: initialDocs,
+      activeDocumentId: initialActiveId,
+      viewMode: "home",
+      analysisTasks: [],
+      analysisSpeedMode: "fast",
+    });
+
+    const encoder = new TextEncoder();
+    const buildDelayedStream = (doc: typeof DEMO_DOCUMENTS[0], delayMs: number) =>
+      new ReadableStream<Uint8Array>({
+        async start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              `${JSON.stringify({
+                type: "status",
+                phase: "top-model",
+                message: `正在并行构建 ${doc.title}`,
+                progress: 35,
+              })}\n`
+            )
+          );
+          await new Promise((r) => setTimeout(r, delayMs));
+          controller.enqueue(
+            encoder.encode(`${JSON.stringify({ type: "complete", document: doc })}\n`)
+          );
+          controller.close();
+        },
+      });
+
+    let callCount = 0;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      callCount += 1;
+      const docIdx = callCount;
+      const docCopy = {
+        ...DEMO_DOCUMENTS[0],
+        id: `bg-doc-${docIdx}`,
+        title: `Parallel Paper ${docIdx}`,
+      };
+      return new Response(buildDelayedStream(docCopy, 35), {
+        status: 200,
+        headers: { "Content-Type": "application/x-ndjson" },
+      });
+    });
+
+    try {
+      const taskId1 = enqueueBackgroundAnalysis({
+        modeId: "academic-paper",
+        payload: { kind: "remote-url", content: "https://arxiv.org/pdf/1512.03385" },
+        llmConfig: { provider: "openai", apiKey: "", model: "gpt-4o-mini" },
+        speedMode: "fast",
+      });
+      const taskId2 = enqueueBackgroundAnalysis({
+        modeId: "academic-paper",
+        payload: { kind: "remote-url", content: "https://arxiv.org/abs/1706.03762" },
+        llmConfig: { provider: "openai", apiKey: "", model: "gpt-4o-mini" },
+        speedMode: "balanced",
+      });
+
+      // Both tasks immediately run concurrently (MAX_CONCURRENT_DOCS = 3)
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      });
+
+      // Switching away from home into reading an existing article must NOT cancel background tasks
+      useWorkbenchStore.getState().setActiveDocument(initialDocs[1].id);
+      expect(useWorkbenchStore.getState().viewMode).toBe("reader");
+      expect(useWorkbenchStore.getState().activeDocumentId).toBe(initialDocs[1].id);
+
+      await waitFor(() => {
+        const tasks = useWorkbenchStore.getState().analysisTasks;
+        expect(tasks.find((t) => t.id === taskId1)?.status).toBe("completed");
+        expect(tasks.find((t) => t.id === taskId2)?.status).toBe("completed");
+      });
+
+      // Completing background tasks saved both new docs without hijacking the active reader view
+      const stateAfter = useWorkbenchStore.getState();
+      expect(stateAfter.activeDocumentId).toBe(initialDocs[1].id);
+      expect(stateAfter.viewMode).toBe("reader");
+      expect(stateAfter.documents.some((d) => d.id === "bg-doc-1")).toBe(true);
+      expect(stateAfter.documents.some((d) => d.id === "bg-doc-2")).toBe(true);
+
+      // Verify TasksTopbarPill & BackgroundTasksDock render and allow opening on click
+      const onOpenDoc = vi.fn();
+      const pillView = render(
+        <TasksTopbarPill
+          tasks={stateAfter.analysisTasks}
+          themeMode="paper"
+          open={false}
+          onToggle={() => {}}
+        />
+      );
+      expect(pillView.getByTestId("topbar-tasks-pill").textContent).toContain("解析完成 2");
+      pillView.unmount();
+
+      const dockView = render(
+        <BackgroundTasksDock
+          tasks={stateAfter.analysisTasks}
+          themeMode="aurora"
+          open={true}
+          onToggleOpen={() => {}}
+          onOpenDocument={onOpenDoc}
+          onCancelTask={cancelBackgroundAnalysis}
+          onRetryTask={() => {}}
+          onRemoveTask={() => {}}
+          onClearFinished={() => {}}
+        />
+      );
+      expect(dockView.getByTestId(`analysis-task-${taskId1}`).textContent).toContain("极速");
+      fireEvent.click(dockView.getByTestId(`task-open-${taskId1}`));
+      expect(onOpenDoc).toHaveBeenCalledWith("bg-doc-1");
+      dockView.unmount();
+    } finally {
+      fetchMock.mockRestore();
+      resetAnalysisTaskManagerForTests();
+      useWorkbenchStore.setState({
+        documents: initialDocs,
+        activeDocumentId: initialActiveId,
+        viewMode: "reader",
+        analysisTasks: [],
+        analysisSpeedMode: "balanced",
+      });
+    }
+  });
+
+  it("renders SettingsModal update section, UpdateBanner states, and desktop IPC updater lifecycle", async () => {
+    const doc = DEMO_DOCUMENTS[0];
+    const llmConfig = { provider: "google" as const, apiKey: "", model: "gemini-2.5-flash" };
+
+    const onCheck = vi.fn();
+    const onDownload = vi.fn();
+    const onCancel = vi.fn();
+    const onInstall = vi.fn();
+    const onDismiss = vi.fn();
+    const onOpenSettings = vi.fn();
+
+    // 1. Available update inside SettingsModal Section 4
+    const availableState = {
+      ...createInitialUpdateState("1.1.1", true),
+      status: "available" as const,
+      latestVersion: "1.2.0",
+      hasUpdate: true,
+      assetName: "PurrParse-1.2.0-mac-arm64.dmg",
+      assetSize: 138_000_000,
+      releaseNotes: "1. 后台多任务并行解析\n2. 应用内一键更新",
+      installMode: "self-replace" as const,
+      checkedAt: Date.now(),
+    };
+
+    const settingsView = render(
+      <SettingsModal
+        open={true}
+        doc={doc}
+        config={llmConfig}
+        initialFocusSection="update"
+        hideSecondary={false}
+        hideNotes={false}
+        autoHideHeader={true}
+        updateState={availableState}
+        isDesktopRuntime={true}
+        onCheckForUpdates={onCheck}
+        onDownloadUpdate={onDownload}
+        onCancelDownload={onCancel}
+        onInstallUpdate={onInstall}
+        onToggleSecondary={() => {}}
+        onToggleNotes={() => {}}
+        onToggleAutoHideHeader={() => {}}
+        onExportMarkdown={() => {}}
+        onExportHtml={() => {}}
+        onSave={() => {}}
+        onClose={() => {}}
+      />
+    );
+
+    expect(settingsView.getByTestId("settings-toggle-update").getAttribute("aria-expanded")).toBe("true");
+    expect(settingsView.getByTestId("settings-section-update").textContent).toContain("v1.2.0");
+    fireEvent.click(settingsView.getByTestId("settings-check-update-btn"));
+    expect(onCheck).toHaveBeenCalledTimes(1);
+    fireEvent.click(settingsView.getByTestId("settings-download-update-btn"));
+    expect(onDownload).toHaveBeenCalledTimes(1);
+
+    // 2. Downloading progress & cancel action
+    settingsView.rerender(
+      <SettingsModal
+        open={true}
+        doc={doc}
+        config={llmConfig}
+        initialFocusSection="update"
+        hideSecondary={false}
+        hideNotes={false}
+        autoHideHeader={true}
+        updateState={{
+          ...availableState,
+          status: "downloading",
+          progressPercent: 45,
+          transferredBytes: 62_100_000,
+          totalBytes: 138_000_000,
+          bytesPerSecond: 4_500_000,
+        }}
+        isDesktopRuntime={true}
+        onCheckForUpdates={onCheck}
+        onDownloadUpdate={onDownload}
+        onCancelDownload={onCancel}
+        onInstallUpdate={onInstall}
+        onToggleSecondary={() => {}}
+        onToggleNotes={() => {}}
+        onToggleAutoHideHeader={() => {}}
+        onExportMarkdown={() => {}}
+        onExportHtml={() => {}}
+        onSave={() => {}}
+        onClose={() => {}}
+      />
+    );
+    expect(settingsView.getByTestId("settings-update-progress").textContent).toContain("45%");
+    fireEvent.click(settingsView.getByTestId("settings-cancel-update-btn"));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    // 3. Downloaded ready-to-install action
+    settingsView.rerender(
+      <SettingsModal
+        open={true}
+        doc={doc}
+        config={llmConfig}
+        initialFocusSection="update"
+        hideSecondary={false}
+        hideNotes={false}
+        autoHideHeader={true}
+        updateState={{
+          ...availableState,
+          status: "downloaded",
+          progressPercent: 100,
+          downloadedFilePath: "/tmp/PurrParse-1.2.0-mac-arm64.dmg",
+        }}
+        isDesktopRuntime={true}
+        onCheckForUpdates={onCheck}
+        onDownloadUpdate={onDownload}
+        onCancelDownload={onCancel}
+        onInstallUpdate={onInstall}
+        onToggleSecondary={() => {}}
+        onToggleNotes={() => {}}
+        onToggleAutoHideHeader={() => {}}
+        onExportMarkdown={() => {}}
+        onExportHtml={() => {}}
+        onSave={() => {}}
+        onClose={() => {}}
+      />
+    );
+    expect(settingsView.getByTestId("settings-install-update-btn").textContent).toContain("重启并安装更新");
+    fireEvent.click(settingsView.getByTestId("settings-install-update-btn"));
+    expect(onInstall).toHaveBeenCalledTimes(1);
+    settingsView.unmount();
+
+    // 4. UpdateBanner notification + dismiss
+    const bannerView = render(
+      <UpdateBanner
+        state={availableState}
+        isDesktopRuntime={true}
+        dismissed={false}
+        onDownload={onDownload}
+        onCancelDownload={onCancel}
+        onInstall={onInstall}
+        onOpenSettings={onOpenSettings}
+        onDismiss={onDismiss}
+      />
+    );
+    expect(bannerView.getByTestId("app-update-banner").textContent).toContain("v1.2.0");
+    fireEvent.click(bannerView.getByTestId("update-banner-details-btn"));
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    fireEvent.click(bannerView.getByTestId("update-banner-dismiss"));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    bannerView.unmount();
+
+    // 5. useAppUpdater connects to desktop IPC bridge and menu check events
+    const win = window as unknown as {
+      purrparseDesktop?: Record<string, unknown>;
+    };
+    const prevBridge = win.purrparseDesktop;
+    const menuListenerRef: { current: (() => void) | null } = { current: null };
+    const ipcCheckMock = vi.fn().mockResolvedValue({
+      ...availableState,
+      status: "up-to-date",
+      hasUpdate: false,
+      latestVersion: "1.1.1",
+    });
+
+    win.purrparseDesktop = {
+      isDesktop: true,
+      platform: "darwin",
+      arch: "arm64",
+      updater: {
+        getState: vi.fn().mockResolvedValue(createInitialUpdateState("1.1.1", true)),
+        checkForUpdates: ipcCheckMock,
+        downloadUpdate: vi.fn().mockResolvedValue(availableState),
+        cancelDownload: vi.fn().mockResolvedValue(availableState),
+        installUpdate: vi.fn().mockResolvedValue(availableState),
+        revealDownloadedFile: vi.fn().mockResolvedValue({ ok: true }),
+        openReleasePage: vi.fn().mockResolvedValue({ ok: true }),
+        onStateChange: () => () => {},
+        onMenuCheckForUpdates: (cb: () => void) => {
+          menuListenerRef.current = cb;
+          return () => {};
+        },
+      },
+    };
+
+    const onMenuOpen = vi.fn();
+    function UpdaterProbe() {
+      const updater = useAppUpdater({ onMenuCheckRequest: onMenuOpen });
+      return (
+        <div>
+          <span data-testid="probe-status">{updater.state.status}</span>
+          <button type="button" data-testid="probe-check" onClick={() => void updater.checkForUpdates()}>
+            check
+          </button>
+        </div>
+      );
+    }
+
+    try {
+      const probe = render(<UpdaterProbe />);
+      await waitFor(() => {
+        expect(menuListenerRef.current).not.toBeNull();
+      });
+      menuListenerRef.current?.();
+      expect(onMenuOpen).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(ipcCheckMock).toHaveBeenCalledTimes(1);
+        expect(probe.getByTestId("probe-status").textContent).toBe("up-to-date");
+      });
+      probe.unmount();
+    } finally {
+      win.purrparseDesktop = prevBridge;
+    }
   });
 });

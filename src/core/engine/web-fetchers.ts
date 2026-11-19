@@ -208,6 +208,13 @@ function parseArxivAtomFeed(xml: string): ArxivPaperSearchHit[] {
   return hits;
 }
 
+function makeTimeoutSignal(ms: number): AbortSignal | undefined {
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    return AbortSignal.timeout(ms);
+  }
+  return undefined;
+}
+
 export async function searchArxivPapers(
   query: string,
   maxResults = 5
@@ -217,7 +224,10 @@ export async function searchArxivPapers(
     ? `https://export.arxiv.org/api/query?id_list=${encodeURIComponent(directId)}`
     : `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query.trim())}&start=0&max_results=${maxResults}&sortBy=relevance&sortOrder=descending`;
 
-  const resp = await fetch(endpoint, { headers: REQUEST_HEADERS });
+  const resp = await fetch(endpoint, {
+    headers: REQUEST_HEADERS,
+    signal: makeTimeoutSignal(10000),
+  });
   if (!resp.ok) {
     throw new Error(`arXiv 检索失败 (${resp.status})`);
   }
@@ -233,7 +243,7 @@ export async function fetchArxivHtmlPaper(
     searchArxivPapers(cleanId, 1).catch(() => []),
     fetch(`https://arxiv.org/html/${encodeURIComponent(cleanId)}`, {
       headers: REQUEST_HEADERS,
-      signal: AbortSignal.timeout(10000),
+      signal: makeTimeoutSignal(6000),
     }).catch(() => null),
   ]);
 
@@ -413,6 +423,7 @@ export async function fetchArxivPaperPdf(
     searchArxivPapers(cleanId, 1).catch(() => []),
     fetch(`https://arxiv.org/pdf/${encodeURIComponent(cleanId)}`, {
       headers: { "User-Agent": REQUEST_HEADERS["User-Agent"] },
+      signal: makeTimeoutSignal(25000),
     }),
   ]);
 

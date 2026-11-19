@@ -107,6 +107,8 @@ interface HeaderConsoleProps {
   hideNotes?: boolean;
   themeMode?: WorkbenchThemeMode;
   readingDepthMode?: ReadingDepthMode;
+  tasksPill?: React.ReactNode;
+  hasAppUpdate?: boolean;
   onThemeChange?: (theme: WorkbenchThemeMode) => void;
   onReadingDepthChange?: (mode: ReadingDepthMode) => void;
   onToggleDim: (dim: HighlightDimensionKey) => void;
@@ -131,6 +133,8 @@ export function HeaderConsole({
   hideNotes = false,
   themeMode = "paper",
   readingDepthMode = "workbench",
+  tasksPill,
+  hasAppUpdate = false,
   onThemeChange,
   onReadingDepthChange,
   onToggleDim,
@@ -621,6 +625,8 @@ export function HeaderConsole({
               </div>
             )}
 
+            {tasksPill}
+
             {onThemeChange && (
               <button
                 type="button"
@@ -651,13 +657,20 @@ export function HeaderConsole({
             <button
               type="button"
               onClick={onOpenSettings}
-              className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg cursor-pointer whitespace-nowrap transition-colors ${ghostBtnCls}`}
+              className={`relative inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg cursor-pointer whitespace-nowrap transition-colors ${ghostBtnCls}`}
             >
               <svg className="w-3.5 h-3.5 opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.4-1.51 1Z" />
               </svg>
               <span>{`设置与导出${hiddenViewCount > 0 ? ` · ${hiddenViewCount}隐藏` : ""}`}</span>
+              {hasAppUpdate && (
+                <span
+                  data-testid="settings-update-dot"
+                  aria-label="发现新版本"
+                  className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"
+                />
+              )}
             </button>
           </div>
         </div>
