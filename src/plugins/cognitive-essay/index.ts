@@ -11,6 +11,7 @@ import {
   BottomStepBaseSchema,
   TopModelBaseSchema,
   buildHydratedUnit,
+  isPrimarilyChineseProse,
 } from "@/core/contracts/shared-schemas";
 import {
   buildCognitiveBatchPrompt,
@@ -80,21 +81,11 @@ function extractUnitSentences(raw: string): string[] {
     .filter((s) => s.length >= 12);
 }
 
-function buildDynamicUnitSummary(unit: SourceUnit, sentences: string[]): string {
-  const lead = sentences[0] ?? unit.rawPrimaryText.slice(0, 120);
-  const second = sentences[1];
-  const isEnglishHeavy =
-    (unit.rawPrimaryText.match(/[A-Za-z]{4,}/g)?.length ?? 0) > 12 &&
-    (unit.rawPrimaryText.match(/[\u4e00-\u9fff]/g)?.length ?? 0) < 25;
-
-  if (isEnglishHeavy) {
-    return `[核心句提炼] ${lead.slice(0, 130)}${lead.length > 130 ? "..." : ""}${
-      second ? `\n[逻辑延续] ${second.slice(0, 110)}${second.length > 110 ? "..." : ""}` : ""
-    }`;
+function buildHeuristicSecondaryBlock(unit: SourceUnit): string {
+  if (isPrimarilyChineseProse(unit.rawPrimaryText)) {
+    return "";
   }
-  return `[结构化要点] ${lead.slice(0, 130)}${lead.length > 130 ? "..." : ""}${
-    second ? `\n[延展视角] ${second.slice(0, 110)}${second.length > 110 ? "..." : ""}` : ""
-  }`;
+  return "[离线结构化模式] 当前未接入大模型 API Key，暂不提供外文全文翻译（配置 API Key 后可逐句忠实翻译）。";
 }
 
 function buildDynamicHighlights(
@@ -253,7 +244,7 @@ export const cognitiveEssayPlugin: WorkbenchModePlugin<
         primaryText: u.rawPrimaryText,
         figures: u.metadata?.figures,
         highlights: buildDynamicHighlights(u.rawPrimaryText, sentences),
-        secondaryBlockText: buildDynamicUnitSummary(u, sentences),
+        secondaryBlockText: buildHeuristicSecondaryBlock(u),
         notes: [
           {
             label: MODULE_LABELS[0],

@@ -1,4 +1,5 @@
 import type { SourceUnit, TopModelStepOutput } from "@/core/contracts/mode-plugin";
+import { isPrimarilyChineseProse } from "@/core/contracts/shared-schemas";
 
 interface PromptContext {
   readingPurpose?: string;
@@ -75,16 +76,23 @@ export function buildCognitiveBatchPrompt(
   allSectionIds: string[]
 ): string {
   const payload = batch
-    .map((u) => `unitId: ${u.id}\nunitCode: ${u.unitCode}\n原文:\n${u.rawPrimaryText}`)
+    .map((u) => {
+      const langHint = isPrimarilyChineseProse(u.rawPrimaryText)
+        ? "语言判定: 中文原文（无需翻译，secondaryBlockText 必须直接返回空字符串 \"\"）"
+        : "语言判定: 外文原文（必须逐句完整直译为自然中文，严禁概括/改写为总结或第三人称转述）";
+      return `unitId: ${u.id}\nunitCode: ${u.unitCode}\n${langHint}\n原文:\n${u.rawPrimaryText}`;
+    })
     .join("\n\n---\n\n");
 
   return [
-    "你是一位高维认知教练与顶级专栏译者。严禁使用任何 Emoji 表情符号。",
+    "你是一位兼具信雅达译笔与认知心理学洞察的专业译者兼精读导师。严禁使用任何 Emoji 表情符号。",
     `全局认知脉络：${globalContextSummary}`,
     `可用叙事弧线 ID：${allSectionIds.join(", ")}`,
-    "请为以下思想单元生成深度内化拆解：",
+    "请为以下思想单元生成忠实译文（仅针对外文）与深度内化拆解：",
     "1. weight 严格区分 'core'（认知暴击核）、'support'（逻辑展开块）、'transition'（叙事过渡）。",
-    "2. secondaryBlockText 必须是具有顶级思想专栏质感与节奏张力的中文译文，拒绝翻译腔。",
+    "2. secondaryBlockText 严格翻译规则（绝对禁止把译文写成内容总结或评论！）：",
+    "   - 若单元标记为「中文原文」：secondaryBlockText 必须输出空字符串 \"\"，不要重复抄写或压缩总结原文。",
+    "   - 若单元标记为「外文原文」（包含英文文章、英文播客或口播字幕）：secondaryBlockText 必须是【逐句完整、准确对等、口语/行文自然的中文直译】，保留所有时间戳（如 [00:00]）、保留原人称对话视角（我/你）和每句话的具体细节与案例；严禁写成第三人称转述（如“主持人问道/作者指出……”），严禁省略句子，严禁把分析评论写进 secondaryBlockText（所有分析评论全部写到右侧 notes[]）。",
     "3. highlights 严格提取原文连续子串：",
     "   - dim1 (黄): 颠覆性洞察与金句",
     "   - dim2 (红): 核心心智模型/概念造词（必须附带 tooltip 第一性原理释义）",

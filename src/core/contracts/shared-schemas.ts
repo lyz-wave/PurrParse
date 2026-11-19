@@ -195,7 +195,10 @@ export const AnnotatedUnitBaseSchema = z.object({
     .string()
     .nullish()
     .transform((v) => v ?? ""),
-  secondaryBlockText: z.string().min(1),
+  secondaryBlockText: z
+    .string()
+    .nullish()
+    .transform((v) => (v ?? "").trim()),
   tensorOrStateFlow: optString,
   highlights: z.array(HighlightSpanSchema).catch([]),
   notes: z
@@ -395,6 +398,20 @@ export const BottomStepBaseSchema = z.object({
 });
 
 /**
+ * Detects whether a prose block is already written primarily in Chinese,
+ * ignoring timestamps, URLs, and light inline English terminology.
+ */
+export function isPrimarilyChineseProse(rawText: string): boolean {
+  const cleaned = rawText
+    .replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/`[^`]+`/g, " ");
+  const cjkCount = (cleaned.match(/[\u4e00-\u9fff]/g) ?? []).length;
+  const latinLetters = (cleaned.match(/[A-Za-z]/g) ?? []).length;
+  return cjkCount >= 12 && cjkCount * 2 >= latinLetters;
+}
+
+/**
  * Shared helper used by plugins to hydrate a WorkbenchUnit cleanly without duplicating mapping logic.
  */
 export function buildHydratedUnit(
@@ -417,6 +434,8 @@ export function buildHydratedUnit(
   annotation: z.infer<typeof AnnotatedUnitBaseSchema>,
   moduleLabels: [string, string, string, string]
 ) {
+  const skipChineseTranslation =
+    source.primaryKind === "prose" && isPrimarilyChineseProse(source.rawPrimaryText);
   const formulas =
     source.metadata?.formulas?.map((latex, idx) => ({
       latex,
@@ -443,7 +462,7 @@ export function buildHydratedUnit(
     figures: source.metadata?.figures,
     dataTable: source.metadata?.dataTable,
     highlights: annotation.highlights,
-    secondaryBlockText: annotation.secondaryBlockText,
+    secondaryBlockText: skipChineseTranslation ? "" : annotation.secondaryBlockText,
     notes: annotation.notes.map((n, idx) => ({
       label: moduleLabels[idx] ?? `0${idx + 1} / 深度批注`,
       body: n.body,

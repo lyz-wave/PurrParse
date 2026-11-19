@@ -13,6 +13,7 @@ import {
   BottomStepBaseSchema,
   TopModelBaseSchema,
   buildHydratedUnit,
+  isPrimarilyChineseProse,
 } from "@/core/contracts/shared-schemas";
 import { chunkArray, retryBatchUnits, runChunkedAnalysis } from "./chunk-orchestrator";
 import {
@@ -23,7 +24,7 @@ import {
   type StructuredObjectGenerator,
 } from "./llm-adapters";
 import { PluginRegistry } from "../registry/plugin-registry";
-import { academicPaperPlugin, defaultPluginRegistry } from "@/plugins";
+import { academicPaperPlugin, cognitiveEssayPlugin, defaultPluginRegistry } from "@/plugins";
 import { compileDocumentToStandaloneHtml } from "@/exporters/html-compiler";
 import { exportDocumentToMarkdown } from "@/exporters/markdown-exporter";
 
@@ -1164,5 +1165,71 @@ describe("LLM Adapter Gateway Normalization", () => {
       "重译成功_u1",
       "重译成功_u2",
     ]);
+  });
+
+  it("skips redundant translations for Chinese prose units and enforces strict faithful translation for foreign units in cognitive-essay", () => {
+    const zhUnit = {
+      id: "zh-1",
+      unitCode: "UNIT #01",
+      sectionId: "sec-1",
+      sectionTitle: "第一节",
+      primaryKind: "prose" as const,
+      rawPrimaryText:
+        "[00:00] 很多人之所以长期处于内耗状态，是因为把 Agentic Workflow 和表面自律混为一谈，没有区分真正可控的行为杠杆。",
+    };
+    const enUnit = {
+      id: "en-1",
+      unitCode: "UNIT #02",
+      sectionId: "sec-1",
+      sectionTitle: "Section 1",
+      primaryKind: "prose" as const,
+      rawPrimaryText:
+        "[00:00] Aileen Gu, welcome to On Purpose. Thank you for having me, Jay. I wanted to justify my academics as independent from sport.",
+    };
+
+    expect(isPrimarilyChineseProse(zhUnit.rawPrimaryText)).toBe(true);
+    expect(isPrimarilyChineseProse(enUnit.rawPrimaryText)).toBe(false);
+
+    const prompt = cognitiveEssayPlugin.buildPrompts.batchUnitsPrompt(
+      [zhUnit, enUnit],
+      "CTX",
+      ["sec-1"]
+    );
+    expect(prompt).toContain("语言判定: 中文原文");
+    expect(prompt).toContain("语言判定: 外文原文");
+    expect(prompt).toContain("严禁写成第三人称转述");
+
+    const parsedBatch = BatchUnitsBaseSchema.parse({
+      units: [
+        {
+          unitId: "zh-1",
+          weight: "core",
+          tldr: "区分核心杠杆",
+          secondaryBlockText: "",
+          highlights: [],
+          notes: [{ body: "拆解 1" }],
+        },
+        {
+          unitId: "en-1",
+          weight: "support",
+          tldr: "开场访谈",
+          secondaryBlockText: "谷爱凌，欢迎来到 On Purpose。谢谢你的邀请，Jay。我曾一直想证明我的学业成果独立于体育之外。",
+          highlights: [],
+          notes: [{ body: "拆解 2" }],
+        },
+      ],
+    });
+
+    const hydratedZh = cognitiveEssayPlugin.hydrateUnit(zhUnit, parsedBatch.units[0]);
+    const hydratedEn = cognitiveEssayPlugin.hydrateUnit(enUnit, parsedBatch.units[1]);
+    expect(hydratedZh.secondaryBlockText).toBe("");
+    expect(hydratedEn.secondaryBlockText).toContain("欢迎来到 On Purpose");
+
+    const heuristicDoc = cognitiveEssayPlugin.createHeuristicDocument("混合语言测试", [
+      zhUnit,
+      enUnit,
+    ]);
+    expect(heuristicDoc.units[0].secondaryBlockText).toBe("");
+    expect(heuristicDoc.units[1].secondaryBlockText).not.toContain("[核心句提炼]");
   });
 });

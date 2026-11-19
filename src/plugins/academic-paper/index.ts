@@ -11,6 +11,7 @@ import {
   BottomStepBaseSchema,
   TopModelBaseSchema,
   buildHydratedUnit,
+  isPrimarilyChineseProse,
 } from "@/core/contracts/shared-schemas";
 import { ingestAcademicPaper } from "./pdf-ingestor";
 import {
@@ -203,8 +204,9 @@ export const academicPaperPlugin: WorkbenchModePlugin<
         figures: u.metadata?.figures,
         dataTable: u.metadata?.dataTable,
         highlights,
-        secondaryBlockText:
-          "[本地启发式模式] 已完成章节切分、公式提取与核心句初筛。如需生成顶刊级中文学术意译与审稿人级逐段深度剖析，请在顶部设置面板接入 Gemini / OpenAI / DeepSeek / Claude API Key。",
+        secondaryBlockText: isPrimarilyChineseProse(u.rawPrimaryText)
+          ? ""
+          : "[本地启发式模式] 已完成章节切分、公式提取与核心句初筛。如需生成顶刊级中文学术意译与审稿人级逐段深度剖析，请在顶部设置面板接入 Gemini / OpenAI / DeepSeek / Claude API Key。",
         notes: [
           {
             label: MODULE_LABELS[0],

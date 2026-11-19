@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.9)"
+        description: "Release tag name (e.g. v1.1.10)"
         required: true
-        default: "v1.1.9"
+        default: "v1.1.10"
 
 permissions:
   contents: write
@@ -39,6 +39,13 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           cat <<'EOF' > /tmp/release-notes.md
+          ### v1.1.10 主要更新（支持 v1.1.8 / v1.1.9 增量热更新）
+
+          - **彻底规范翻译 vs 拆解职责，中文原文不再多余生成“假译文/摘要”**：
+            - 在 [shared-schemas.ts](src/core/contracts/shared-schemas.ts) 新增 `isPrimarilyChineseProse()` 语言判定：对中文文章或中文口播段落，自动跳过 `secondaryBlockText`（不再生成重复复述或总结框），仅对非中文/外文段落生成中文翻译。
+            - 重写 [cognitive-essay/prompts.ts](src/plugins/cognitive-essay/prompts.ts)、[academic-paper/prompts.ts](src/plugins/academic-paper/prompts.ts) 与 [chunk-orchestrator.ts](src/core/engine/chunk-orchestrator.ts) 极速模式提示词：明确禁止在 `secondaryBlockText` 中把外文对话/段落写成第三人称总结或评述，要求逐句忠实直译并保留 `[MM:SS]` 时间锚点与人称对话口吻；所有分析与点评统一归位右侧 `notes[]`。
+            - 更新离线启发式兜底逻辑：中文段落 `secondaryBlockText` 为空，外文段落不再冒充摘要输出 `[核心句提炼]`。
+
           ### v1.1.9 主要更新（支持 v1.1.8 增量热更新）
 
           - **彻底修复长视频/播客转写有缓存却仍提示无正文的问题**：

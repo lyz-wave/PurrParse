@@ -1,4 +1,5 @@
 import type { SourceUnit, TopModelStepOutput } from "@/core/contracts/mode-plugin";
+import { isPrimarilyChineseProse } from "@/core/contracts/shared-schemas";
 
 interface PromptContext {
   readingPurpose?: string;
@@ -67,10 +68,12 @@ export function buildAcademicBatchPrompt(
   allSectionIds: string[]
 ): string {
   const payload = batch
-    .map(
-      (u) =>
-        `unitId: ${u.id}\nunitCode: ${u.unitCode}\nsectionId: ${u.sectionId}\n原文:\n${u.rawPrimaryText}`
-    )
+    .map((u) => {
+      const langHint = isPrimarilyChineseProse(u.rawPrimaryText)
+        ? "语言判定: 中文原文（无需翻译，secondaryBlockText 直接输出空字符串 \"\"）"
+        : "语言判定: 外文原文（须逐句忠实完整意译，不可写成概括摘要）";
+      return `unitId: ${u.id}\nunitCode: ${u.unitCode}\nsectionId: ${u.sectionId}\n${langHint}\n原文:\n${u.rawPrimaryText}`;
+    })
     .join("\n\n---\n\n");
 
   return [
@@ -79,7 +82,7 @@ export function buildAcademicBatchPrompt(
     `可用章节 ID 列表：${allSectionIds.join(", ")}`,
     "请为以下每一个单元生成结构化精读批注：",
     "1. weight 严格区分 'core'（核心论点/核心公式/关键实验）、'support'（论证基石）、'transition'（过渡段）。",
-    "2. secondaryBlockText 必须是地道、流畅的中文学术期刊意译，严禁机翻腔。",
+    "2. secondaryBlockText：若为中文原文则直接输出空字符串 \"\"；若为外文原文则必须是忠实完整的中文学术翻译（保留所有定量结果、条件与因果关系，不缩略为摘要）。",
     "3. highlights 必须严格提取原文中真实存在的连续子串，按五维分类：",
     "   - dim1 (黄): 核心论点/假说",
     "   - dim2 (红): 关键概念/术语（必须附带 tooltip 一句话白话定义）",

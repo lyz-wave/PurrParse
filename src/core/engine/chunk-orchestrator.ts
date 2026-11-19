@@ -156,7 +156,7 @@ function appendPromptModeHint(
   }
   if (speedMode === "fast") {
     if (stage === "batch") {
-      return `${prompt}\n\n【极速精简模式】每单元 secondaryBlockText 保留准确流畅意译，tldr 限 1 句，notes 4 条各限 1~2 句核心要点，highlights 每段最多 3 条最关键短语。`;
+      return `${prompt}\n\n【极速精简模式】外文原文的 secondaryBlockText 必须保持逐句完整忠实译文（严禁改写为第三人称概括总结；中文原文则输出 \"\"）；仅对 tldr（限 1 句）、notes 4 条（各限 1~2 句核心要点）与 highlights（每段最多 3 条最关键短语）做精简。`;
     }
     return `${prompt}\n\n【极速精简模式】底部各模块保持完整结构但每条内容精炼到 1 句话，socratic-qa 输出 3 题，控制整体长度实现快速响应。`;
   }
