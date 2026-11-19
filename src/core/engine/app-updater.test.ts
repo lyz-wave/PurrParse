@@ -84,16 +84,24 @@ describe("app-updater core engine", () => {
     expect(info.releaseNotes).toContain("新增应用内自动检查更新");
   });
 
-  it("falls back to GitHub /releases/latest HTTP redirect when REST API hits 403 rate limit (Tier 2)", async () => {
+  it("falls back to GitHub /releases/latest HTTP redirect (including multi-hop repo redirects) when REST API hits 403", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("API rate limit exceeded", { status: 403 }))
       .mockResolvedValueOnce({
         ok: false,
+        status: 301,
+        url: "",
+        headers: new Headers({
+          location: "https://github.com/lyz-wave/purrparse/releases/latest",
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
         status: 302,
         url: "",
         headers: new Headers({
-          location: "https://github.com/lyz-wave/deep-reading-workbench/releases/tag/v1.2.1",
+          location: "https://github.com/lyz-wave/PurrParse/releases/tag/v1.2.1",
         }),
       } as Response);
 
@@ -104,7 +112,7 @@ describe("app-updater core engine", () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(info.source).toBe("github-redirect");
     expect(info.latestVersion).toBe("1.2.1");
     expect(info.hasUpdate).toBe(true);

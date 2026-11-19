@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.2)"
+        description: "Release tag name (e.g. v1.1.3)"
         required: true
-        default: "v1.1.2"
+        default: "v1.1.3"
 
 permissions:
   contents: write
@@ -39,11 +39,10 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           cat <<'EOF' > /tmp/release-notes.md
-          ### v1.1.2 主要更新
+          ### v1.1.3 主要更新
 
-          - **极速与标准并发解析提速**：LLM 请求超时优化与分块并发调度（标准精读 4 并发 / 极速模式 5 并发），明显缩短长文、论文与仓库解析等待时间。
-          - **后台多篇并行解析（任务坞）**：支持多条 URL / 多文件同时入队后台解析；切换阅读其他文章或进入阅读视图时解析不中断，右下角任务坞实时追踪进度。
-          - **App 内检查更新与一键升级**：支持启动静默检测、设置中心与系统菜单手动检查更新、桌面端进度条下载更新包、macOS 自动替换 `.app` 重启及 Windows 拉起 NSIS 安装向导。
+          - **仓库名称对齐 `PurrParse`**：App 内检查更新源、官网与文档全部迁移至 `lyz-wave/PurrParse`，同时增强重定向降级探针（支持多跳 301/302 自动跟随），确保后续版本检查更新与增量升级稳定直达。
+          - **包含完整核心能力**：极速/标准并发解析（4–5 并发）、后台多篇并行任务坞、macOS 自动替换 `.app` 重启与 Windows NSIS 一键升级。
 
           ### 安装与首次运行说明
 

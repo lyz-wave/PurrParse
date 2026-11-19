@@ -921,7 +921,7 @@ function initToolbar() {
   // CLI Copy button + Contact copy buttons + WeChat QR lightbox trigger
   const copyBtn = document.getElementById('cli-copy-btn');
   copyBtn?.addEventListener('click', () => {
-    navigator.clipboard?.writeText('git clone https://github.com/lyz-wave/deep-reading-workbench.git && npm install && npm run dev').catch(() => {});
+    navigator.clipboard?.writeText('git clone https://github.com/lyz-wave/PurrParse.git && npm install && npm run dev').catch(() => {});
     const label = copyBtn.querySelector('span');
     if (label) {
       const old = label.textContent;
@@ -1095,12 +1095,12 @@ function renderModuleShowcases() {
   bindVinylHover(stack);
 }
 
-// ── 6. Live GitHub Stars Counter (lyz-wave/deep-reading-workbench) ──
+// ── 6. Live GitHub Stars Counter (lyz-wave/PurrParse) ──
 function initGithubStars() {
   const countEl = document.getElementById('github-star-count');
   if (!countEl) return;
 
-  const REPO = 'lyz-wave/deep-reading-workbench';
+  const REPO = 'lyz-wave/PurrParse';
   const LEGACY_CACHE_KEY = 'prism_gh_stars_lyz_wave_v1';
   const CACHE_KEY = 'purrparse_gh_stars_v2';
   let lastFetchAt = 0;
@@ -1198,10 +1198,10 @@ function initGithubStars() {
 
 // ── 7. Auto OS/Arch Detection + GitHub Release Download Picker (Doubao-Style Hover Menu) ──
 function initDesktopDownloads() {
-  const REPO = 'lyz-wave/deep-reading-workbench';
+  const REPO = 'lyz-wave/PurrParse';
   const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
   const SOURCE_ZIP_URL = `https://github.com/${REPO}/archive/refs/heads/main.zip`;
-  const DEFAULT_VERSION = 'v1.1.2';
+  const DEFAULT_VERSION = 'v1.1.3';
 
   const TARGETS = [
     {
@@ -1211,7 +1211,7 @@ function initDesktopDownloads() {
       longLabel: 'Mac Apple Silicon (ARM64)',
       ext: 'dmg',
       pattern: /(?:mac[-_.]?arm64|arm64)\.dmg$/i,
-      defaultAsset: 'PurrParse-1.1.2-mac-arm64.dmg',
+      defaultAsset: 'PurrParse-1.1.3-mac-arm64.dmg',
     },
     {
       id: 'mac-x64',
@@ -1220,7 +1220,7 @@ function initDesktopDownloads() {
       longLabel: 'Mac Intel (x64)',
       ext: 'dmg',
       pattern: /(?:mac[-_.]?x64|x64)\.dmg$/i,
-      defaultAsset: 'PurrParse-1.1.2-mac-x64.dmg',
+      defaultAsset: 'PurrParse-1.1.3-mac-x64.dmg',
     },
     {
       id: 'win-x64',
@@ -1229,7 +1229,7 @@ function initDesktopDownloads() {
       longLabel: 'Windows x64',
       ext: 'exe',
       pattern: /(?:win[-_.]?x64|x64).*\.exe$/i,
-      defaultAsset: 'PurrParse-1.1.2-win-x64-Setup.exe',
+      defaultAsset: 'PurrParse-1.1.3-win-x64-Setup.exe',
     },
     {
       id: 'win-arm64',
@@ -1238,7 +1238,7 @@ function initDesktopDownloads() {
       longLabel: 'Windows ARM64',
       ext: 'exe',
       pattern: /(?:win[-_.]?arm64|arm64).*\.exe$/i,
-      defaultAsset: 'PurrParse-1.1.2-win-arm64-Setup.exe',
+      defaultAsset: 'PurrParse-1.1.3-win-arm64-Setup.exe',
     },
   ];
 

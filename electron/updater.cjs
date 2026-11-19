@@ -3,13 +3,14 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const APP_GITHUB_REPO = "lyz-wave/deep-reading-workbench";
+const APP_GITHUB_REPO = "lyz-wave/PurrParse";
 const APP_RELEASES_PAGE_URL = `https://github.com/${APP_GITHUB_REPO}/releases`;
 const APP_LATEST_RELEASE_URL = `${APP_RELEASES_PAGE_URL}/latest`;
 const APP_DOWNLOAD_PAGE_URL = "https://purrparse.xyz";
 
 const TRUSTED_DOWNLOAD_PREFIXES = [
   `https://github.com/${APP_GITHUB_REPO}/`,
+  "https://github.com/lyz-wave/deep-reading-workbench/",
   "https://objects.githubusercontent.com/",
   "https://release-assets.githubusercontent.com/",
   "https://github-releases.githubusercontent.com/",
@@ -17,6 +18,7 @@ const TRUSTED_DOWNLOAD_PREFIXES = [
 
 const TRUSTED_EXTERNAL_PREFIXES = [
   `https://github.com/${APP_GITHUB_REPO}`,
+  "https://github.com/lyz-wave/deep-reading-workbench",
   APP_DOWNLOAD_PAGE_URL,
   "https://www.purrparse.xyz",
 ];
@@ -150,7 +152,7 @@ function buildDirectAssetFallbackUrl(tagName, platform, arch) {
 }
 
 async function fetchLatestReleaseInfo(currentVersion, platform, arch, timeoutMs = 8000) {
-  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.2";
+  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.3";
 
   // Tier 1: GitHub REST API
   try {
@@ -202,41 +204,56 @@ async function fetchLatestReleaseInfo(currentVersion, platform, arch, timeoutMs 
     // Fall through to Tier 2 redirect probe
   }
 
-  // Tier 2: GitHub web redirect fallback
+  // Tier 2: GitHub web redirect fallback (follows up to 3 hops)
   const redirectController = new AbortController();
   const redirectTimer = setTimeout(() => redirectController.abort(), timeoutMs);
   try {
-    const webRes = await fetch(APP_LATEST_RELEASE_URL, {
-      method: "GET",
-      redirect: "manual",
-      headers: {
-        "User-Agent": `PurrParse/${cleanCurrent}`,
-      },
-      signal: redirectController.signal,
-    });
-    const redirectTarget = webRes.headers.get("location") || webRes.url || "";
-    const tagMatch = redirectTarget.match(/\/releases\/tag\/(v?[^/?#]+)/i);
-    if (tagMatch && tagMatch[1]) {
-      const rawTag = decodeURIComponent(tagMatch[1]).trim();
-      const latestVersion = normalizeVersion(rawTag);
-      if (latestVersion) {
-        const fallbackAsset = buildDirectAssetFallbackUrl(rawTag, platform, arch);
-        return {
-          currentVersion: cleanCurrent,
-          latestVersion,
-          tagName: rawTag,
-          hasUpdate: compareSemver(latestVersion, cleanCurrent) > 0,
-          releaseNotes: "",
-          releaseUrl: `${APP_RELEASES_PAGE_URL}/tag/${encodeURIComponent(rawTag)}`,
-          publishedAt: null,
-          assetName: fallbackAsset.assetName,
-          downloadUrl: fallbackAsset.downloadUrl,
-          assetSize: null,
-          source: "github-redirect",
-        };
+    let probeUrl = APP_LATEST_RELEASE_URL;
+    let lastStatus = 0;
+
+    for (let hop = 0; hop < 3; hop++) {
+      const webRes = await fetch(probeUrl, {
+        method: "GET",
+        redirect: "manual",
+        headers: {
+          "User-Agent": `PurrParse/${cleanCurrent}`,
+        },
+        signal: redirectController.signal,
+      });
+      lastStatus = webRes.status;
+
+      const location = webRes.headers.get("location") || "";
+      const redirectTarget = location ? new URL(location, probeUrl).toString() : webRes.url || "";
+      const tagMatch = redirectTarget.match(/\/releases\/tag\/(v?[^/?#]+)/i);
+      if (tagMatch && tagMatch[1]) {
+        const rawTag = decodeURIComponent(tagMatch[1]).trim();
+        const latestVersion = normalizeVersion(rawTag);
+        if (latestVersion) {
+          const fallbackAsset = buildDirectAssetFallbackUrl(rawTag, platform, arch);
+          return {
+            currentVersion: cleanCurrent,
+            latestVersion,
+            tagName: rawTag,
+            hasUpdate: compareSemver(latestVersion, cleanCurrent) > 0,
+            releaseNotes: "",
+            releaseUrl: `${APP_RELEASES_PAGE_URL}/tag/${encodeURIComponent(rawTag)}`,
+            publishedAt: null,
+            assetName: fallbackAsset.assetName,
+            downloadUrl: fallbackAsset.downloadUrl,
+            assetSize: null,
+            source: "github-redirect",
+          };
+        }
       }
+
+      if (location && redirectTarget !== probeUrl) {
+        probeUrl = redirectTarget;
+        continue;
+      }
+      break;
     }
-    throw new Error(`HTTP ${webRes.status}`);
+
+    throw new Error(`HTTP ${lastStatus}`);
   } catch (err) {
     const detail =
       err instanceof Error && err.name === "AbortError"
@@ -283,7 +300,7 @@ function sanitizeAssetFilename(rawName) {
 }
 
 function createDesktopUpdater({ app, shell, stopServer, getMainWindow }) {
-  const currentVersion = normalizeVersion(app.getVersion() || "1.1.2");
+  const currentVersion = normalizeVersion(app.getVersion() || "1.1.3");
   const capabilities = detectInstallCapabilities(app);
   const platform = process.platform;
   const arch = process.arch === "arm64" ? "arm64" : process.arch === "x64" ? "x64" : "unknown";
