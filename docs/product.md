@@ -33,7 +33,7 @@ A schema-driven, anti-hallucination three-mode reading and deconstruction workbe
 
 - **Technical Boundaries**: Root app built on Next.js 15 App Router (`src/app/`); marketing site (`landing/`) intentionally ships as vanilla static HTML/CSS/JS with self-hosted media/fonts and no bundler step; repository architecture follows Deep Modules / Clean Seams / Zod AST contracts (`src/core/contracts/`).
 - **Epistemic Integrity Constraint**: Analytical summaries and Q&A responses must preserve explicit provenance labels (`[原文明示 / 分析推断 / 原文未说明]`). Never fabricate metrics, benchmarks, citations, user quotes, or unverified product claims.
-- **Brand Transition State (Open Decision)**: External brand identity in `landing/` and `prism-showreel/` has transitioned from `Prism Workbench` to **PurrParse**, whereas root package metadata (`package.json`), `src/app/layout.tsx`, and `ARCHITECTURE_AND_ROADMAP.md` currently still carry `prism-workbench` / `Prism Workbench`. Aligning internal code identifiers to `PurrParse` remains an open future decision.
+- **Brand Transition State (Open Decision)**: External brand identity across `landing/`, `prism-showreel/`, and root `README.md` has transitioned from `Prism Workbench` to **PurrParse**, whereas internal package metadata (`package.json`) and [architecture.md](./architecture.md) still carry `prism-workbench` / `Prism Workbench`. Aligning internal code identifiers to `PurrParse` remains an open future decision.
 - **Undecided Commercial & Governance Facts**: Product-wide distribution license, commercial pricing tiers, and optional cloud synchronization policy are not established in the repository and remain undecided; third-party vinyl stickers in `landing/` carry MIT attribution to `stickitupx.com/stickers`.
 
 ## Brand Commitments
@@ -46,7 +46,7 @@ A schema-driven, anti-hallucination three-mode reading and deconstruction workbe
 
 ## Evidence on Hand
 
-- `ARCHITECTURE_AND_ROADMAP.md`: System architecture specification documenting the four seams (`Source Ingestion`, `Mode Plugin`, `Structured LLM Engine`, `Renderer & Exporter`).
+- [architecture.md](./architecture.md): System architecture specification documenting the four seams (`Source Ingestion`, `Mode Plugin`, `Structured LLM Engine`, `Renderer & Exporter`).
 - `landing/media/prism-showcase.mp4` & `landing/media/shots/*.png`: Rendered 45s 1080p showcase video and verified UI captures across Paper / Aurora / Pure / Modal states.
 - `landing/assets/stickers/*.svg`, `landing/media/sfx/meow.mp3`, `landing/media/wechat-qr.png`: Verified SVG brand/sticker assets, sound effect asset, and contact QR image.
 - **Verified Absences (Do Not Fabricate)**: No verified external customer testimonials, production usage analytics, SLA metrics, or pricing tables exist in the repository.

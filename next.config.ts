@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   },
   outputFileTracingExcludes: {
     "*": [
+      "./docs/**",
+      "./README.md",
       "./landing/**",
       "./prism-showreel/**",
       "./electron/**",
