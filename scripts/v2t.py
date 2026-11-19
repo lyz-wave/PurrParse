@@ -13,6 +13,7 @@
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -180,6 +181,27 @@ def grab(url, work, want_video=False):
     return src
 
 
+def _sanitize_json_value(val):
+    if isinstance(val, float):
+        return val if math.isfinite(val) else None
+    if isinstance(val, dict):
+        return {k: _sanitize_json_value(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_sanitize_json_value(v) for v in val]
+    return val
+
+
+def _sanitize_transcript_json(path: Path):
+    if not path.exists():
+        return
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        clean = _sanitize_json_value(raw)
+        path.write_text(json.dumps(clean, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+    except Exception as exc:
+        log("warn: transcript.json sanitize skipped:", exc)
+
+
 # ---------------------------------------------------------------- asr
 def asr(work, model=None, lang="zh", max_sec=None, initial_prompt=None):
     wav = work / "speech.wav"
@@ -201,16 +223,22 @@ def asr(work, model=None, lang="zh", max_sec=None, initial_prompt=None):
         if initial_prompt:
             cmd += ["--initial-prompt", initial_prompt]
         sh(cmd)
-        return work / "transcript.json"
+        out_json = work / "transcript.json"
+        _sanitize_transcript_json(out_json)
+        return out_json
     # 没有 mlx_whisper 才回退（首次会下 large-v3，约 3GB）
     log("未找到 mlx_whisper，回退 faster-whisper")
     if True:
         from faster_whisper import WhisperModel
         m = WhisperModel("large-v3", device="cpu", compute_type="int8")
         segs, inf = m.transcribe(str(wav), language=lang, vad_filter=True)
-        data = {"segments": [{"start": s.start, "end": s.end, "text": s.text} for s in segs],
-                "language": inf.language, "engine": "faster-whisper/large-v3"}
-        (work / "transcript.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        data = _sanitize_json_value({
+            "segments": [{"start": s.start, "end": s.end, "text": s.text} for s in segs],
+            "language": inf.language, "engine": "faster-whisper/large-v3"
+        })
+        (work / "transcript.json").write_text(
+            json.dumps(data, ensure_ascii=False, allow_nan=False), encoding="utf-8"
+        )
         (work / "transcript.txt").write_text("".join(s["text"] for s in data["segments"]), encoding="utf-8")
         return work / "transcript.json"
 

@@ -80,6 +80,11 @@ function splitProseByHighlights(
   return segments;
 }
 
+export function isFailedTranslationUnit(unit: WorkbenchUnit): boolean {
+  const txt = unit.secondaryBlockText || "";
+  return /(?:该批次翻译生成失败|该批次请求异常|该批次未返回对应译文)/.test(txt);
+}
+
 interface DualColumnRowProps {
   unit: WorkbenchUnit;
   layoutRatio: [number, number];
@@ -113,6 +118,12 @@ interface DualColumnRowProps {
     activeThreadId?: string;
   }) => void;
   onDeleteQaThread?: (threadId: string) => void;
+  isRetryingUnit?: boolean;
+  failedUnitsCount?: number;
+  isRetryingAllFailed?: boolean;
+  retryError?: string | null;
+  onRetryUnit?: () => void;
+  onRetryAllFailed?: () => void;
 }
 
 const UNDERSTANDING_OPTIONS: Array<{
@@ -152,6 +163,12 @@ export function DualColumnRow({
   qaThreads = [],
   onOpenSelectionQa,
   onDeleteQaThread,
+  isRetryingUnit = false,
+  failedUnitsCount = 0,
+  isRetryingAllFailed = false,
+  retryError = null,
+  onRetryUnit,
+  onRetryAllFailed,
 }: DualColumnRowProps) {
   const [noteOpen, setNoteOpen] = useState(Boolean(userNote));
   const [localPrediction, setLocalPrediction] = useState(predictionAnswer);
@@ -515,11 +532,46 @@ export function DualColumnRow({
           </div>
         )}
 
-        {showSecondary && unit.secondaryBlockText && (
-          <div className="prism-quote-block mt-4 rounded-r-xl px-4 py-3 text-sm leading-relaxed italic font-serif">
-            <MathText text={unit.secondaryBlockText} />
-          </div>
-        )}
+        {showSecondary && unit.secondaryBlockText && (() => {
+          const isFailedTranslation = isFailedTranslationUnit(unit);
+          const busy = isRetryingUnit || isRetryingAllFailed;
+          return (
+            <div
+              className={`prism-quote-block mt-4 rounded-r-xl px-4 py-3 text-sm leading-relaxed italic font-serif ${
+                isFailedTranslation ? "border-l-rose-400 bg-rose-50/70" : ""
+              }`}
+            >
+              <MathText text={unit.secondaryBlockText} />
+              {isFailedTranslation && onRetryUnit && (
+                <div className="mt-2.5 not-italic font-sans flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={onRetryUnit}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-rose-300 bg-white px-3 py-1 font-mono text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-55 cursor-pointer disabled:cursor-wait transition-colors shadow-xs"
+                  >
+                    {isRetryingUnit ? "正在重译本段..." : "↻ 重试本段翻译"}
+                  </button>
+                  {failedUnitsCount > 1 && onRetryAllFailed && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={onRetryAllFailed}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#1a2744]/20 bg-[#1a2744] px-3 py-1 font-mono text-xs font-medium text-white hover:bg-[#24365c] disabled:opacity-55 cursor-pointer disabled:cursor-wait transition-colors"
+                    >
+                      {isRetryingAllFailed
+                        ? "正在批量重试..."
+                        : `一键重试全部失败段 (${failedUnitsCount})`}
+                    </button>
+                  )}
+                </div>
+              )}
+              {isFailedTranslation && retryError && (
+                <p className="mt-1.5 not-italic font-sans text-xs text-rose-600">{retryError}</p>
+              )}
+            </div>
+          );
+        })()}
 
         {!pureMode && unit.transitionSummary && (
           <div className="mt-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">

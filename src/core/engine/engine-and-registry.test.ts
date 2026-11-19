@@ -14,10 +14,11 @@ import {
   TopModelBaseSchema,
   buildHydratedUnit,
 } from "@/core/contracts/shared-schemas";
-import { chunkArray, runChunkedAnalysis } from "./chunk-orchestrator";
+import { chunkArray, retryBatchUnits, runChunkedAnalysis } from "./chunk-orchestrator";
 import {
   createAiSdkObjectGenerator,
   createNormalizingOpenAiFetch,
+  isTransientNetworkOrGatewayError,
   tryRepairTruncatedJson,
   type StructuredObjectGenerator,
 } from "./llm-adapters";
@@ -1065,5 +1066,103 @@ describe("LLM Adapter Gateway Normalization", () => {
     expect(batchCalls.some((c) => c.endsWith("_part2"))).toBe(true);
     expect(finalDoc?.units).toHaveLength(8);
     expect(finalDoc?.units.every((u) => u.secondaryBlockText.startsWith("已翻译_"))).toBe(true);
+  });
+
+  it("retries transient TLS socket disconnect errors in gateway adapter and supports single/batch fallback retry", async () => {
+    expect(
+      isTransientNetworkOrGatewayError(
+        new Error("Cannot connect to API: Client network socket disconnected before secure TLS connection was established")
+      )
+    ).toBe(true);
+    expect(isTransientNetworkOrGatewayError(new Error("401 Unauthorized invalid api key"))).toBe(false);
+
+    let attempt = 0;
+    const fetchSpy = vi.fn(async () => {
+      attempt += 1;
+      if (attempt === 1) {
+        throw new Error(
+          "Cannot connect to API: Client network socket disconnected before secure TLS connection was established"
+        );
+      }
+      return new Response(
+        [
+          'data: {"id":"retry-ok","choices":[{"index":0,"delta":{"role":"assistant","content":"{\\"ok\\":true,\\"label\\":\\"tls-recovered\\"}"},"finish_reason":"stop"}]}',
+          "data: [DONE]",
+        ].join("\n\n"),
+        { status: 200, headers: { "content-type": "text/event-stream" } }
+      );
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "custom",
+      apiKey: "sk-test",
+      model: "deepseek-chat",
+      baseUrl: "https://relay.example.com/v1",
+    });
+
+    const recovered = await generator.generate({
+      schema: SampleSchema,
+      schemaName: "sample_tls_retry",
+      prompt: "test retry",
+    });
+    expect(recovered).toEqual({ ok: true, label: "tls-recovered" });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    // Also test retryBatchUnits fallback splitting a 2-unit batch down to 1-unit retries
+    const seenLabels: string[] = [];
+    const manualRetryGenerator: StructuredObjectGenerator = {
+      async generate<T>({ schemaName, prompt }: { schemaName: string; prompt: string }): Promise<T> {
+        seenLabels.push(schemaName);
+        if (!schemaName.includes("_unit_")) {
+          throw new Error("Client network socket disconnected");
+        }
+        const ids = Array.from(prompt.matchAll(/unitId:\s*(\S+)/g)).map((m) => m[1]);
+        return {
+          units: ids.map((id) => ({
+            unitId: id,
+            weight: "core" as const,
+            tldr: `TLDR_${id}`,
+            secondaryBlockText: `重译成功_${id}`,
+            highlights: [],
+            notes: [{ body: `Note_${id}` }],
+          })),
+        } as T;
+      },
+    };
+
+    const retranslated = await retryBatchUnits(
+      academicPaperPlugin,
+      [
+        {
+          id: "u1",
+          unitCode: "Abs.P1",
+          sectionId: "sec-abs",
+          sectionTitle: "Abstract",
+          primaryKind: "prose",
+          rawPrimaryText: "The dominant sequence transduction models rely on recurrence.",
+        },
+        {
+          id: "u2",
+          unitCode: "Abs.P2",
+          sectionId: "sec-abs",
+          sectionTitle: "Abstract",
+          primaryKind: "prose",
+          rawPrimaryText: "Experiments on two machine translation tasks show superior quality.",
+        },
+      ],
+      {
+        generator: manualRetryGenerator,
+        globalContextSummary: "CTX",
+        allSectionIds: ["sec-abs"],
+      }
+    );
+
+    expect(seenLabels.some((l) => l.includes("_unit_1"))).toBe(true);
+    expect(seenLabels.some((l) => l.includes("_unit_2"))).toBe(true);
+    expect(retranslated.map((u) => u.secondaryBlockText)).toEqual([
+      "重译成功_u1",
+      "重译成功_u2",
+    ]);
   });
 });

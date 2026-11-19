@@ -15,6 +15,20 @@ function formatCognitiveContext(context?: PromptContext): string {
   return lines.length > 0 ? `\n读者画像：\n${lines.join("\n")}\n` : "";
 }
 
+function sampleRepresentativeUnits(units: SourceUnit[], limit: number): SourceUnit[] {
+  if (units.length <= limit) return units;
+  const picked: SourceUnit[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < limit; i++) {
+    const idx = Math.min(units.length - 1, Math.floor((i * (units.length - 1)) / Math.max(1, limit - 1)));
+    if (!seen.has(idx)) {
+      seen.add(idx);
+      picked.push(units[idx]);
+    }
+  }
+  return picked;
+}
+
 export function buildCognitiveTopModelPrompt(
   title: string,
   units: SourceUnit[],
@@ -30,8 +44,7 @@ export function buildCognitiveTopModelPrompt(
     .map(([id, secTitle]) => `- ${id}: ${secTitle}`)
     .join("\n");
 
-  const digest = units
-    .slice(0, 14)
+  const digest = sampleRepresentativeUnits(units, 16)
     .map((u) => `[unitId=${u.id} | sectionId=${u.sectionId} | ${u.sectionTitle}] ${u.rawPrimaryText.slice(0, 260)}`)
     .join("\n");
 
@@ -95,8 +108,7 @@ export function buildCognitiveBottomPrompt(
   topModel: TopModelStepOutput,
   context?: PromptContext
 ): string {
-  const digest = units
-    .slice(0, 12)
+  const digest = sampleRepresentativeUnits(units, 14)
     .map((u) => `[${u.unitCode}] ${u.rawPrimaryText.slice(0, 180)}`)
     .join("\n");
   const today = new Date().toISOString().slice(0, 10);

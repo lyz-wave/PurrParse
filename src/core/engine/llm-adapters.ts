@@ -765,6 +765,78 @@ function isNonRetryableGatewayStatus(err: unknown): boolean {
   return status === 401 || status === 402 || status === 403 || status === 404 || status === 429;
 }
 
+export function isTransientNetworkOrGatewayError(err: unknown): boolean {
+  if (!err) return false;
+  if (APICallError.isInstance(err)) {
+    const status = err.statusCode;
+    if (status === 401 || status === 402 || status === 403 || status === 404) {
+      return false;
+    }
+    if (
+      status === 408 ||
+      status === 425 ||
+      status === 429 ||
+      (typeof status === "number" && status >= 500) ||
+      err.isRetryable
+    ) {
+      return true;
+    }
+  }
+  const rec = err as {
+    message?: unknown;
+    code?: unknown;
+    cause?: { message?: unknown; code?: unknown } | null;
+  };
+  const combined = [
+    typeof rec.message === "string" ? rec.message : "",
+    typeof rec.code === "string" ? rec.code : "",
+    typeof rec.cause?.message === "string" ? rec.cause.message : "",
+    typeof rec.cause?.code === "string" ? rec.cause.code : "",
+    err instanceof Error ? err.message : String(err),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    combined.includes("socket disconnected") ||
+    combined.includes("secure tls") ||
+    combined.includes("cannot connect to api") ||
+    combined.includes("econnreset") ||
+    combined.includes("etimedout") ||
+    combined.includes("econnrefused") ||
+    combined.includes("epipe") ||
+    combined.includes("eai_again") ||
+    combined.includes("und_err_") ||
+    combined.includes("fetch failed") ||
+    combined.includes("network") ||
+    combined.includes("empty choices") ||
+    combined.includes("choices 为空") ||
+    combined.includes("流式输出为空") ||
+    combined.includes("timed out")
+  );
+}
+
+function waitMsWithAbort(ms: number, parentSignal?: AbortSignal): Promise<void> {
+  if (parentSignal?.aborted) {
+    return Promise.reject(parentSignal.reason ?? new Error("Aborted"));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      cleanup();
+      reject(parentSignal?.reason ?? new Error("Aborted"));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      parentSignal?.removeEventListener("abort", onAbort);
+    };
+    parentSignal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 function isFormatOrParseFailure(err: unknown): boolean {
   return (
     err instanceof SyntaxError ||
@@ -1150,103 +1222,130 @@ export function createAiSdkObjectGenerator(config: LLMConfig): StructuredObjectG
       abortSignal?: AbortSignal;
       maxTokens?: number;
     }): Promise<T> {
-      const { signal: callSignal, cleanup } = createCallAbortSignal(abortSignal, 120_000);
-      try {
-        // For OpenAI-compatible proxies/relays, stream first (with JSON Schema in system prompt) to avoid
-        // reverse-proxy non-streaming idle timeouts and `stream: false` empty choices aggregator bugs.
-        if (isOpenAICompatibleProxy) {
-          try {
-            return await generateViaStreamText({
-              model,
-              prompt,
-              schema,
-              abortSignal: callSignal,
-              maxTokens,
-            });
-          } catch (streamErr) {
-            if (isAbortError(streamErr, abortSignal) || callSignal.aborted) {
-              throw streamErr;
+      const executeSingleAttempt = async (): Promise<T> => {
+        const { signal: callSignal, cleanup } = createCallAbortSignal(abortSignal, 120_000);
+        try {
+          // For OpenAI-compatible proxies/relays, stream first (with JSON Schema in system prompt) to avoid
+          // reverse-proxy non-streaming idle timeouts and `stream: false` empty choices aggregator bugs.
+          if (isOpenAICompatibleProxy) {
+            try {
+              return await generateViaStreamText({
+                model,
+                prompt,
+                schema,
+                abortSignal: callSignal,
+                maxTokens,
+              });
+            } catch (streamErr) {
+              if (isAbortError(streamErr, abortSignal) || callSignal.aborted) {
+                throw streamErr;
+              }
+              const recovered = tryRecoverFromErrorText(streamErr, schema);
+              if (recovered !== null) return recovered;
+
+              // Only fall back to strict json_object generateObject if the model responded with non-JSON text;
+              // skip fallback when auth/quota/rate-limit/gateway-empty errors already failed at HTTP/stream level.
+              if (!isFormatOrParseFailure(streamErr)) {
+                throw streamErr;
+              }
+
+              const { signal: objSignal, cleanup: cleanupObj } = createCallAbortSignal(
+                abortSignal,
+                120_000
+              );
+              try {
+                const result = await generateObject({
+                  model,
+                  schema,
+                  schemaName,
+                  prompt,
+                  temperature: 0.2,
+                  maxTokens,
+                  maxRetries: 0,
+                  abortSignal: objSignal,
+                  mode: "json",
+                });
+                return result.object;
+              } catch (backupErr) {
+                const backupRecovered = tryRecoverFromErrorText(backupErr, schema);
+                if (backupRecovered !== null) return backupRecovered;
+                throw backupErr;
+              } finally {
+                cleanupObj();
+              }
             }
-            const recovered = tryRecoverFromErrorText(streamErr, schema);
+          }
+
+          // Direct official providers (Google, Anthropic, direct OpenAI) use structured generateObject first
+          try {
+            const result = await generateObject({
+              model,
+              schema,
+              schemaName,
+              prompt,
+              temperature: 0.2,
+              maxTokens,
+              maxRetries: 1,
+              abortSignal: callSignal,
+              mode: "auto",
+            });
+            return result.object;
+          } catch (firstErr) {
+            if (isAbortError(firstErr, abortSignal) || callSignal.aborted) {
+              throw firstErr;
+            }
+            const recovered = tryRecoverFromErrorText(firstErr, schema);
             if (recovered !== null) return recovered;
 
-            // Only fall back to strict json_object generateObject if the model responded with non-JSON text;
-            // skip fallback when auth/quota/rate-limit/gateway-empty errors already failed at HTTP/stream level.
-            if (!isFormatOrParseFailure(streamErr)) {
-              throw streamErr;
+            if (!shouldFallbackFromGenerateObject(firstErr)) {
+              throw firstErr;
             }
 
-            const { signal: objSignal, cleanup: cleanupObj } = createCallAbortSignal(
+            const { signal: fallbackSignal, cleanup: cleanupFallback } = createCallAbortSignal(
               abortSignal,
               120_000
             );
             try {
-              const result = await generateObject({
+              return await generateViaStreamText({
                 model,
-                schema,
-                schemaName,
                 prompt,
-                temperature: 0.2,
+                schema,
+                abortSignal: fallbackSignal,
                 maxTokens,
-                maxRetries: 0,
-                abortSignal: objSignal,
-                mode: "json",
               });
-              return result.object;
-            } catch (backupErr) {
-              const backupRecovered = tryRecoverFromErrorText(backupErr, schema);
-              if (backupRecovered !== null) return backupRecovered;
-              throw backupErr;
             } finally {
-              cleanupObj();
+              cleanupFallback();
             }
           }
+        } finally {
+          cleanup();
         }
+      };
 
-        // Direct official providers (Google, Anthropic, direct OpenAI) use structured generateObject first
+      const maxTransientAttempts = 3;
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= maxTransientAttempts; attempt++) {
         try {
-          const result = await generateObject({
-            model,
-            schema,
-            schemaName,
-            prompt,
-            temperature: 0.2,
-            maxTokens,
-            maxRetries: 1,
-            abortSignal: callSignal,
-            mode: "auto",
-          });
-          return result.object;
-        } catch (firstErr) {
-          if (isAbortError(firstErr, abortSignal) || callSignal.aborted) {
-            throw firstErr;
+          return await executeSingleAttempt();
+        } catch (err) {
+          lastErr = err;
+          if (
+            attempt >= maxTransientAttempts ||
+            abortSignal?.aborted ||
+            !isTransientNetworkOrGatewayError(err)
+          ) {
+            throw err;
           }
-          const recovered = tryRecoverFromErrorText(firstErr, schema);
-          if (recovered !== null) return recovered;
-
-          if (!shouldFallbackFromGenerateObject(firstErr)) {
-            throw firstErr;
-          }
-
-          const { signal: fallbackSignal, cleanup: cleanupFallback } = createCallAbortSignal(
-            abortSignal,
-            120_000
+          const backoffMs =
+            (attempt === 1 ? 900 : 2200) + Math.floor(Math.random() * 600);
+          console.warn(
+            `[llm-gateway] transient error on attempt ${attempt}/${maxTransientAttempts}, retrying in ${backoffMs}ms:`,
+            err instanceof Error ? err.message : String(err)
           );
-          try {
-            return await generateViaStreamText({
-              model,
-              prompt,
-              schema,
-              abortSignal: fallbackSignal,
-              maxTokens,
-            });
-          } finally {
-            cleanupFallback();
-          }
+          await waitMsWithAbort(backoffMs, abortSignal);
         }
-      } finally {
-        cleanup();
       }
+      throw lastErr;
     },
   };
 }

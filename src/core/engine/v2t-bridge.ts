@@ -151,12 +151,17 @@ export function formatV2tResultToSections(
 
   const flushBuf = () => {
     if (buf.length === 0 || blockStart === null) return;
-    let joined = buf
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join("，");
+    const rawParts = buf.map((s) => s.trim()).filter(Boolean);
+    const combinedRaw = rawParts.join("");
+    const cjkCount = (combinedRaw.match(/[\u4e00-\u9fff]/g) ?? []).length;
+    const asciiWordCount = (combinedRaw.match(/[A-Za-z]{2,}/g) ?? []).length;
+    const isMostlyEnglish = asciiWordCount > cjkCount * 2 && cjkCount < 8;
+
+    let joined = isMostlyEnglish
+      ? rawParts.join(" ").replace(/\s+([,.;!?])/g, "$1").replace(/\s{2,}/g, " ").trim()
+      : rawParts.join("，");
     if (joined && !/[。！？.!?]$/.test(joined)) {
-      joined += "。";
+      joined += isMostlyEnglish ? "." : "。";
     }
     if (joined) {
       paragraphs.push(`[${formatMmSs(blockStart)}] ${joined}`);
@@ -188,6 +193,110 @@ export function formatV2tResultToSections(
 }
 
 /**
+ * Parses Python-generated JSON that may contain bare non-standard `NaN`, `Infinity`, or `-Infinity`
+ * values (e.g. `mlx_whisper --output-format all` emits `"avg_logprob": NaN`), replacing unquoted
+ * non-finite numeric tokens with `null` while leaving string literals untouched.
+ */
+export function parseLenientJson<T>(raw: string): T {
+  let out = "";
+  let inString = false;
+  let i = 0;
+
+  const isIdentChar = (ch: string) => /[A-Za-z0-9_$]/.test(ch);
+
+  while (i < raw.length) {
+    const ch = raw[i];
+    if (inString) {
+      out += ch;
+      if (ch === "\\" && i + 1 < raw.length) {
+        out += raw[i + 1];
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      i += 1;
+      continue;
+    }
+
+    const prevCh = i > 0 ? raw[i - 1] : "";
+    if (!isIdentChar(prevCh)) {
+      if (raw.startsWith("-Infinity", i) && !isIdentChar(raw[i + 9] || "")) {
+        out += "null";
+        i += 9;
+        continue;
+      }
+      if (raw.startsWith("Infinity", i) && !isIdentChar(raw[i + 8] || "")) {
+        out += "null";
+        i += 8;
+        continue;
+      }
+      if (raw.startsWith("NaN", i) && !isIdentChar(raw[i + 3] || "")) {
+        out += "null";
+        i += 3;
+        continue;
+      }
+    }
+
+    out += ch;
+    i += 1;
+  }
+
+  return JSON.parse(out) as T;
+}
+
+function parseTimestampToSeconds(ts: string): number {
+  const m = ts.trim().match(/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:[,.](\d{1,3}))?$/);
+  if (!m) return 0;
+  const h = Number(m[1] ?? "0");
+  const min = Number(m[2] ?? "0");
+  const sec = Number(m[3] ?? "0");
+  const ms = Number((m[4] ?? "0").padEnd(3, "0"));
+  return h * 3600 + min * 60 + sec + ms / 1000;
+}
+
+export function parseSrtOrVttSegments(raw: string): V2tSegment[] {
+  const lines = raw.replace(/\r\n/g, "\n").split("\n");
+  const segments: V2tSegment[] = [];
+  const timeRangeRe =
+    /^(\d{1,2}:?\d{2}:\d{2}(?:[,.]\d{1,3})?)\s*-->\s*(\d{1,2}:?\d{2}:\d{2}(?:[,.]\d{1,3})?)/;
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    const match = line.match(timeRangeRe);
+    if (!match) {
+      i += 1;
+      continue;
+    }
+    const start = parseTimestampToSeconds(match[1]);
+    const end = parseTimestampToSeconds(match[2]);
+    i += 1;
+    const textLines: string[] = [];
+    while (i < lines.length && lines[i].trim() !== "") {
+      const candidate = lines[i].trim();
+      if (!/^\d+$/.test(candidate)) {
+        textLines.push(candidate.replace(/<[^>]+>/g, "").trim());
+      }
+      i += 1;
+    }
+    const text = textLines.filter(Boolean).join(" ").trim();
+    if (text) {
+      segments.push({ start, end, text });
+    }
+  }
+  return segments;
+}
+
+/**
  * Invokes the local video-to-text skill (`v2t.py`) with persistent disk caching
  * under `.v2t-cache/<cacheKey>/`.
  */
@@ -204,28 +313,57 @@ export async function runVideoToTextBridge(
     process.env.PURRPARSE_CACHE_DIR?.trim() || path.join(process.cwd(), ".v2t-cache");
   const workDir = path.join(cacheRoot, safeKey);
   const transcriptJsonPath = path.join(workDir, "transcript.json");
+  const transcriptSrtPath = path.join(workDir, "transcript.srt");
+  const transcriptVttPath = path.join(workDir, "transcript.vtt");
   const sourceJsonPath = path.join(workDir, "source.json");
   const pageTxtPath = path.join(workDir, "page.txt");
   const outMdPath = path.join(workDir, "transcript.md");
 
   const readCached = (): V2tTranscriptResult | null => {
-    if (!fs.existsSync(transcriptJsonPath)) return null;
-    try {
-      const tData = JSON.parse(fs.readFileSync(transcriptJsonPath, "utf8")) as {
-        segments?: V2tSegment[];
-      };
-      const segments = Array.isArray(tData.segments) ? tData.segments : [];
-      if (segments.length === 0) return null;
-      const source = fs.existsSync(sourceJsonPath)
-        ? (JSON.parse(fs.readFileSync(sourceJsonPath, "utf8")) as V2tSourceMeta)
-        : {};
-      const pageText = fs.existsSync(pageTxtPath)
-        ? fs.readFileSync(pageTxtPath, "utf8")
-        : "";
-      return { source, segments, pageText };
-    } catch {
-      return null;
+    let segments: V2tSegment[] = [];
+
+    if (fs.existsSync(transcriptJsonPath)) {
+      try {
+        const rawJson = fs.readFileSync(transcriptJsonPath, "utf8");
+        const tData = parseLenientJson<{ segments?: V2tSegment[] }>(rawJson);
+        segments = Array.isArray(tData.segments)
+          ? tData.segments.filter((s) => typeof s?.text === "string" && s.text.trim().length > 0)
+          : [];
+      } catch (err) {
+        console.warn("[v2t] transcript.json parse warning:", err);
+      }
     }
+
+    if (segments.length === 0 && fs.existsSync(transcriptSrtPath)) {
+      try {
+        segments = parseSrtOrVttSegments(fs.readFileSync(transcriptSrtPath, "utf8"));
+      } catch (err) {
+        console.warn("[v2t] transcript.srt fallback parse warning:", err);
+      }
+    }
+
+    if (segments.length === 0 && fs.existsSync(transcriptVttPath)) {
+      try {
+        segments = parseSrtOrVttSegments(fs.readFileSync(transcriptVttPath, "utf8"));
+      } catch (err) {
+        console.warn("[v2t] transcript.vtt fallback parse warning:", err);
+      }
+    }
+
+    if (segments.length === 0) return null;
+
+    let source: V2tSourceMeta = {};
+    if (fs.existsSync(sourceJsonPath)) {
+      try {
+        source = parseLenientJson<V2tSourceMeta>(fs.readFileSync(sourceJsonPath, "utf8"));
+      } catch {
+        source = {};
+      }
+    }
+    const pageText = fs.existsSync(pageTxtPath)
+      ? fs.readFileSync(pageTxtPath, "utf8")
+      : "";
+    return { source, segments, pageText };
   };
 
   const cached = readCached();

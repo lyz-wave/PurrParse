@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   decodeHtmlEntities,
@@ -7,7 +10,12 @@ import {
   parseArxivIdentifier,
   registerVideoTranscriber,
 } from "./web-fetchers";
-import { formatV2tResultToSections } from "./v2t-bridge";
+import {
+  formatV2tResultToSections,
+  parseLenientJson,
+  parseSrtOrVttSegments,
+  runVideoToTextBridge,
+} from "./v2t-bridge";
 
 describe("Web Fetchers & arXiv ID Parsing", () => {
   it("parses bare arXiv IDs, versioned IDs, and arXiv URLs accurately", () => {
@@ -240,5 +248,64 @@ describe("Web Fetchers & arXiv ID Parsing", () => {
     expect(page.title).toBe("东云老师语言学习指南");
     expect(page.text).toContain("快速掌握一门语言不是天赋而是一项技能");
     expect(page.text).not.toContain("未公开字幕");
+  });
+
+  it("recovers v2t transcript.json containing Python NaN/Infinity tokens and supports SRT fallback", async () => {
+    const parsed = parseLenientJson<{ segments: Array<{ avg_logprob: number | null; text: string }> }>(
+      `{"segments":[{"id":1,"avg_logprob":NaN,"compression_ratio":Infinity,"text":"NaN inside quotes stays NaN"},{"id":2,"avg_logprob":-Infinity,"text":"Infinity check"}]}`
+    );
+    expect(parsed.segments[0].avg_logprob).toBeNull();
+    expect(parsed.segments[0].text).toBe("NaN inside quotes stays NaN");
+    expect(parsed.segments[1].avg_logprob).toBeNull();
+
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "purrparse-v2t-test-"));
+    const prevCacheDir = process.env.PURRPARSE_CACHE_DIR;
+    try {
+      process.env.PURRPARSE_CACHE_DIR = tmpRoot;
+      const cacheKey = "douyin-nan-test";
+      const workDir = path.join(tmpRoot, cacheKey);
+      fs.mkdirSync(workDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(workDir, "source.json"),
+        JSON.stringify({ title: "Eileen Gu Interview", platform: "douyin", id: "1" })
+      );
+      fs.writeFileSync(
+        path.join(workDir, "transcript.json"),
+        `{"segments":[{"id":0,"start":0,"end":4,"avg_logprob":NaN,"text":"Aileen Gu, welcome to On Purpose"},{"id":1,"start":4,"end":8,"avg_logprob":-0.2,"text":"Thank you for having me, Jay"}]}`
+      );
+
+      const bridgeRes = await runVideoToTextBridge("https://www.douyin.com/video/1", cacheKey, "zh");
+      expect(bridgeRes).not.toBeNull();
+      expect(bridgeRes?.segments.length).toBe(2);
+      const englishSections = formatV2tResultToSections(bridgeRes!, 2);
+      expect(englishSections[0]).toContain("[00:00] Aileen Gu, welcome to On Purpose Thank you for having me, Jay.");
+      expect(englishSections[0]).not.toContain("，Thank");
+
+      // Also verify SRT fallback when transcript.json is malformed
+      const srtKey = "douyin-srt-fallback";
+      const srtDir = path.join(tmpRoot, srtKey);
+      fs.mkdirSync(srtDir, { recursive: true });
+      fs.writeFileSync(path.join(srtDir, "transcript.json"), "{not-valid-json");
+      fs.writeFileSync(
+        path.join(srtDir, "transcript.srt"),
+        "1\n00:00:01,000 --> 00:00:05,200\nFirst spoken line\n\n2\n00:00:05,200 --> 00:00:09,000\nSecond spoken line\n"
+      );
+      const srtSegments = parseSrtOrVttSegments(
+        fs.readFileSync(path.join(srtDir, "transcript.srt"), "utf8")
+      );
+      expect(srtSegments).toHaveLength(2);
+      const srtRes = await runVideoToTextBridge("https://www.douyin.com/video/2", srtKey, "zh");
+      expect(srtRes?.segments.map((s) => s.text)).toEqual([
+        "First spoken line",
+        "Second spoken line",
+      ]);
+    } finally {
+      if (prevCacheDir === undefined) {
+        delete process.env.PURRPARSE_CACHE_DIR;
+      } else {
+        process.env.PURRPARSE_CACHE_DIR = prevCacheDir;
+      }
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
   });
 });

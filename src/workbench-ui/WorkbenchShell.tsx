@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import type { WorkbenchUnit } from "@/core/contracts/document-ast";
 import { exportDocumentToAnkiCsv } from "@/exporters/anki-exporter";
 import { exportDocumentToMarkdown } from "@/exporters/markdown-exporter";
 import { compileDocumentToStandaloneHtml } from "@/exporters/html-compiler";
@@ -18,7 +19,7 @@ import {
 import { BackgroundTasksDock, TasksTopbarPill } from "./BackgroundTasksDock";
 import { BottomArsenalRenderer } from "./BottomArsenalRenderer";
 import { isMacDesktopRuntime } from "./desktop-runtime";
-import { DualColumnRow } from "./DualColumnRow";
+import { DualColumnRow, isFailedTranslationUnit } from "./DualColumnRow";
 import { GlobalTooltip } from "./GlobalTooltip";
 import { HeaderConsole } from "./HeaderConsole";
 import { IngestionStudioModal } from "./IngestionStudioModal";
@@ -91,6 +92,7 @@ export function WorkbenchShell() {
     setActiveDocument,
     openDocumentForReview,
     upsertDocument,
+    replaceDocumentUnits,
     removeAnalysisTask,
     clearFinishedAnalysisTasks,
     deleteDocument,
@@ -155,6 +157,9 @@ export function WorkbenchShell() {
   const [selectionCopied, setSelectionCopied] = useState(false);
   const [isMacDesktop, setIsMacDesktop] = useState(false);
   const [tasksDockOpen, setTasksDockOpen] = useState(false);
+  const [retryingUnitIds, setRetryingUnitIds] = useState<Record<string, boolean>>({});
+  const [retryingAllFailed, setRetryingAllFailed] = useState(false);
+  const [retryErrorsByUnitId, setRetryErrorsByUnitId] = useState<Record<string, string>>({});
 
   const appUpdater = useAppUpdater({
     autoCheck: true,
@@ -277,6 +282,95 @@ export function WorkbenchShell() {
   );
 
   const activeAnnotations = annotationsByDocId[activeDoc.id];
+
+  const failedUnits = useMemo(
+    () => activeDoc.units.filter((u) => isFailedTranslationUnit(u)),
+    [activeDoc.units]
+  );
+
+  const handleRetryUnits = async (targets: WorkbenchUnit[], isBulk = false) => {
+    if (targets.length === 0) return;
+    if (!llmConfig.apiKey.trim()) {
+      const firstId = targets[0].id;
+      setRetryErrorsByUnitId((prev) => ({
+        ...prev,
+        [firstId]: "请先在右上角「设置」中填入有效的 API Key，再点击重试。",
+      }));
+      setSettingsFocusSection("llm");
+      setSettingsOpen(true);
+      return;
+    }
+
+    const ids = targets.map((u) => u.id);
+    if (isBulk) setRetryingAllFailed(true);
+    setRetryingUnitIds((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = true;
+      return next;
+    });
+    setRetryErrorsByUnitId((prev) => {
+      const next = { ...prev };
+      for (const id of ids) delete next[id];
+      return next;
+    });
+
+    try {
+      const allSectionIds = activeDoc.sections.map((s) => s.id);
+      const summary =
+        activeDoc.topMentalModel.rawSummaryBanner?.body ||
+        activeDoc.subtitle ||
+        activeDoc.title;
+
+      const chunkSize = 6;
+      for (let offset = 0; offset < targets.length; offset += chunkSize) {
+        const chunk = targets.slice(offset, offset + chunkSize);
+        const resp = await fetch("/api/retry-units", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            modeId: activeDoc.modeId,
+            globalContextSummary: summary,
+            allSectionIds,
+            units: chunk.map((u) => ({
+              id: u.id,
+              unitCode: u.unitCode,
+              sectionId: u.sectionId,
+              sectionTitle: u.sectionTitle,
+              sectionTask: u.sectionTask,
+              primaryKind: u.primaryKind,
+              codeLanguage: u.codeLanguage,
+              filePath: u.filePath,
+              rawPrimaryText: u.primaryText,
+              formulas: u.formulas,
+              figures: u.figures,
+              dataTable: u.dataTable,
+              calloutList: u.calloutList,
+            })),
+            llmConfig,
+          }),
+        });
+        const json = (await resp.json()) as { units?: WorkbenchUnit[]; error?: string };
+        if (!resp.ok || !Array.isArray(json.units)) {
+          throw new Error(json.error || `重试请求失败 (${resp.status})`);
+        }
+        replaceDocumentUnits(activeDoc.id, json.units);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "重试翻译失败，请稍后再试";
+      setRetryErrorsByUnitId((prev) => {
+        const next = { ...prev };
+        for (const id of ids) next[id] = msg;
+        return next;
+      });
+    } finally {
+      if (isBulk) setRetryingAllFailed(false);
+      setRetryingUnitIds((prev) => {
+        const next = { ...prev };
+        for (const id of ids) delete next[id];
+        return next;
+      });
+    }
+  };
 
   const fuzzyOrConfusedCount = useMemo(() => {
     const map = activeAnnotations?.unitUnderstanding ?? {};
@@ -615,6 +709,12 @@ export function WorkbenchShell() {
                     onDeleteQaThread={(threadId) =>
                       deleteUnitQaThread(activeDoc.id, unit.id, threadId)
                     }
+                    isRetryingUnit={Boolean(retryingUnitIds[unit.id])}
+                    failedUnitsCount={failedUnits.length}
+                    isRetryingAllFailed={retryingAllFailed}
+                    retryError={retryErrorsByUnitId[unit.id] ?? null}
+                    onRetryUnit={() => void handleRetryUnits([unit], false)}
+                    onRetryAllFailed={() => void handleRetryUnits(failedUnits, true)}
                   />
                 ))}
 

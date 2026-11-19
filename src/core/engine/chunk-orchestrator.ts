@@ -226,6 +226,131 @@ function createAsyncEventQueue<T>() {
   };
 }
 
+async function hydrateUnitsDirect(params: {
+  plugin: WorkbenchModePlugin;
+  generator: StructuredObjectGenerator;
+  targetBatch: SourceUnit[];
+  globalContextSummary: string;
+  allSectionIds: string[];
+  batchLabel: string;
+  speedMode: AnalysisSpeedMode;
+  abortSignal?: AbortSignal;
+}): Promise<WorkbenchUnit[]> {
+  const {
+    plugin,
+    generator,
+    targetBatch,
+    globalContextSummary,
+    allSectionIds,
+    batchLabel,
+    speedMode,
+    abortSignal,
+  } = params;
+
+  const batchResult = await generator.generate({
+    prompt: appendPromptModeHint(
+      plugin.buildPrompts.batchUnitsPrompt(targetBatch, globalContextSummary, allSectionIds),
+      "batch",
+      speedMode
+    ),
+    schema: plugin.schemas.batchUnits,
+    schemaName: batchLabel,
+    abortSignal,
+    maxTokens: 8192,
+  });
+
+  const batchMap = new Map<string, (typeof batchResult.units)[number]>();
+  for (const u of batchResult.units) {
+    if (u.unitId) batchMap.set(u.unitId, u);
+  }
+
+  return targetBatch.map((src, idx) => {
+    const matched = batchMap.get(src.id) ?? batchMap.get(src.unitCode) ?? batchResult.units[idx];
+    if (!matched) {
+      return {
+        id: src.id,
+        unitCode: src.unitCode,
+        sectionId: src.sectionId,
+        sectionTitle: src.sectionTitle,
+        sectionTask: src.sectionTask,
+        weight: "support",
+        tldr: `${src.sectionTitle} (${src.unitCode})`,
+        primaryKind: src.primaryKind,
+        codeLanguage: src.codeLanguage,
+        filePath: src.metadata?.filePath,
+        primaryText: src.rawPrimaryText,
+        highlights: [],
+        secondaryBlockText: "该批次未返回对应译文/状态追踪，可点击右侧重试按钮重新生成。",
+        notes: [],
+      };
+    }
+    return plugin.hydrateUnit(src, matched);
+  });
+}
+
+/**
+ * Re-translates and re-annotates a subset of previously failed units cleanly.
+ * Processes in small chunks (size 2) and falls back to single-unit retries on failure.
+ */
+export async function retryBatchUnits(
+  plugin: WorkbenchModePlugin,
+  targetUnits: SourceUnit[],
+  options: {
+    generator: StructuredObjectGenerator;
+    globalContextSummary: string;
+    allSectionIds: string[];
+    speedMode?: AnalysisSpeedMode;
+    abortSignal?: AbortSignal;
+  }
+): Promise<WorkbenchUnit[]> {
+  const speedMode = options.speedMode ?? "balanced";
+  const chunks = chunkArray(targetUnits, 2);
+  const out: WorkbenchUnit[] = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    throwIfAborted(options.abortSignal);
+    try {
+      const hydrated = await hydrateUnitsDirect({
+        plugin,
+        generator: options.generator,
+        targetBatch: chunk,
+        globalContextSummary: options.globalContextSummary,
+        allSectionIds: options.allSectionIds,
+        batchLabel: `${plugin.id}_manual_retry_${i + 1}`,
+        speedMode,
+        abortSignal: options.abortSignal,
+      });
+      out.push(...hydrated);
+    } catch (err) {
+      if (
+        options.abortSignal?.aborted ||
+        (err instanceof Error && err.name === "AbortError") ||
+        isNonRetryableAuthOrQuotaError(err) ||
+        chunk.length <= 1
+      ) {
+        throw err;
+      }
+      for (let j = 0; j < chunk.length; j++) {
+        await waitWithAbort(800, options.abortSignal);
+        const single = await hydrateUnitsDirect({
+          plugin,
+          generator: options.generator,
+          targetBatch: [chunk[j]],
+          globalContextSummary: options.globalContextSummary,
+          allSectionIds: options.allSectionIds,
+          batchLabel: `${plugin.id}_manual_retry_${i + 1}_unit_${j + 1}`,
+          speedMode,
+          abortSignal: options.abortSignal,
+        });
+        out.push(...single);
+      }
+    }
+  }
+
+  return out;
+}
+
 /**
  * ChunkedAnalysisEngine:
  * Splits arbitrarily long inputs into deterministic chunks, generates top mental model,
@@ -434,55 +559,17 @@ export async function* runChunkedAnalysis(
   const computePoolProgress = () =>
     26 + Math.min(68, Math.round(((completedBatches + (completedBottom ? 1 : 0)) / totalWorkUnits) * 68));
 
-  const hydrateBatchDirect = async (
-    targetBatch: SourceUnit[],
-    batchLabel: string
-  ): Promise<WorkbenchUnit[]> => {
-    const batchResult = await generator.generate({
-      prompt: appendPromptModeHint(
-        plugin.buildPrompts.batchUnitsPrompt(
-          targetBatch,
-          topOutput.globalContextSummary,
-          allSectionIds
-        ),
-        "batch",
-        speedMode
-      ),
-      schema: plugin.schemas.batchUnits,
-      schemaName: batchLabel,
+  const hydrateBatchDirect = (targetBatch: SourceUnit[], batchLabel: string) =>
+    hydrateUnitsDirect({
+      plugin,
+      generator,
+      targetBatch,
+      globalContextSummary: topOutput.globalContextSummary,
+      allSectionIds,
+      batchLabel,
+      speedMode,
       abortSignal: options.abortSignal,
-      maxTokens: 8192,
     });
-
-    const batchMap = new Map<string, (typeof batchResult.units)[number]>();
-    for (const u of batchResult.units) {
-      if (u.unitId) batchMap.set(u.unitId, u);
-    }
-
-    return targetBatch.map((src, idx) => {
-      const matched =
-        batchMap.get(src.id) ?? batchMap.get(src.unitCode) ?? batchResult.units[idx];
-      if (!matched) {
-        return {
-          id: src.id,
-          unitCode: src.unitCode,
-          sectionId: src.sectionId,
-          sectionTitle: src.sectionTitle,
-          sectionTask: src.sectionTask,
-          weight: "support",
-          tldr: `${src.sectionTitle} (${src.unitCode})`,
-          primaryKind: src.primaryKind,
-          codeLanguage: src.codeLanguage,
-          filePath: src.metadata?.filePath,
-          primaryText: src.rawPrimaryText,
-          highlights: [],
-          secondaryBlockText: "该批次未返回对应译文/状态追踪，可点击重新生成或手动补充笔记。",
-          notes: [],
-        };
-      }
-      return plugin.hydrateUnit(src, matched);
-    });
-  };
 
   const hydrateBatchWithRetry = async (
     targetBatch: SourceUnit[],
@@ -517,7 +604,8 @@ export async function* runChunkedAnalysis(
           } catch (halfErr) {
             if (
               options.abortSignal?.aborted ||
-              (halfErr instanceof Error && halfErr.name === "AbortError")
+              (halfErr instanceof Error && halfErr.name === "AbortError") ||
+              isNonRetryableAuthOrQuotaError(halfErr)
             ) {
               throw halfErr;
             }

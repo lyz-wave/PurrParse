@@ -2553,4 +2553,75 @@ describe("Active-Learning UI Components (Blind & Mode-Agnostic)", () => {
       win.purrparseDesktop = prevBridge;
     }
   });
+
+  it("renders per-unit and bulk retry buttons beside failed DualColumnRow translations and hides them once recovered", () => {
+    const paperDoc = DEMO_DOCUMENTS[0];
+    const failedUnit = {
+      ...paperDoc.units[0],
+      secondaryBlockText:
+        "该批次翻译生成失败（Cannot connect to API: Client network socket disconnected be），已保留原文与基础结构（可稍后重试该篇）。",
+    };
+
+    const onRetryUnit = vi.fn();
+    const onRetryAllFailed = vi.fn();
+
+    const failedView = render(
+      <DualColumnRow
+        unit={failedUnit}
+        layoutRatio={paperDoc.layoutRatio}
+        dimensions={paperDoc.dimensions}
+        labels={paperDoc.labels}
+        activeDimFilter={null}
+        hideSecondary={false}
+        hideNotes={false}
+        isFlashed={false}
+        userNote=""
+        onUserNoteChange={() => {}}
+        onJumpToUnit={() => {}}
+        onHoverTooltip={() => {}}
+        onLeaveTooltip={() => {}}
+        failedUnitsCount={3}
+        retryError="临时网络抖动，请再次点击重试"
+        onRetryUnit={onRetryUnit}
+        onRetryAllFailed={onRetryAllFailed}
+      />
+    );
+
+    const retrySingleBtn = Array.from(failedView.container.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("重试本段翻译")
+    );
+    const retryAllBtn = Array.from(failedView.container.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("一键重试全部失败段 (3)")
+    );
+    expect(retrySingleBtn).toBeDefined();
+    expect(retryAllBtn).toBeDefined();
+    expect(failedView.container.textContent).toContain("临时网络抖动");
+
+    fireEvent.click(retrySingleBtn!);
+    fireEvent.click(retryAllBtn!);
+    expect(onRetryUnit).toHaveBeenCalledTimes(1);
+    expect(onRetryAllFailed).toHaveBeenCalledTimes(1);
+    failedView.unmount();
+
+    const recoveredView = render(
+      <DualColumnRow
+        unit={paperDoc.units[0]}
+        layoutRatio={paperDoc.layoutRatio}
+        dimensions={paperDoc.dimensions}
+        labels={paperDoc.labels}
+        activeDimFilter={null}
+        hideSecondary={false}
+        hideNotes={false}
+        isFlashed={false}
+        userNote=""
+        onUserNoteChange={() => {}}
+        onJumpToUnit={() => {}}
+        onHoverTooltip={() => {}}
+        onLeaveTooltip={() => {}}
+        onRetryUnit={onRetryUnit}
+      />
+    );
+    expect(recoveredView.container.textContent).not.toContain("重试本段翻译");
+    recoveredView.unmount();
+  });
 });

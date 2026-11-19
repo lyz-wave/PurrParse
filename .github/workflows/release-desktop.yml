@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.8)"
+        description: "Release tag name (e.g. v1.1.9)"
         required: true
-        default: "v1.1.8"
+        default: "v1.1.9"
 
 permissions:
   contents: write
@@ -39,6 +39,15 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           cat <<'EOF' > /tmp/release-notes.md
+          ### v1.1.9 主要更新（支持 v1.1.8 增量热更新）
+
+          - **彻底修复长视频/播客转写有缓存却仍提示无正文的问题**：
+            - 修复 `mlx_whisper` 在部分长语音段落写出非标准 JSON 值（`avg_logprob: NaN` / `Infinity`）导致 Node `JSON.parse()` 静默抛错并返回 `null` 的严重 bug，在 [v2t-bridge.ts](src/core/engine/v2t-bridge.ts) 新增词法安全的 `parseLenientJson` 与 `.srt`/`.vtt` 兜底解析，并在 [scripts/v2t.py](scripts/v2t.py) 落盘前自动清理非有限浮点值。
+            - 改善纯英文/双语播客转写段落拼接，英文段落不再错误插入中文全角逗号，并为超长视频（如 60 分钟、90+ 单元）增加全局均匀抽样以覆盖全文结构。
+          - **大幅增强 API TLS/网络抖动自动重试 + 新增失败段落旁「原地重试」兜底按钮**：
+            - 在 [llm-adapters.ts](src/core/engine/llm-adapters.ts) 为瞬时 TLS 断连、socket 断开、429/5xx 等网关抖动新增最多 3 次带随机抖动的指数退避重连，配合 [chunk-orchestrator.ts](src/core/engine/chunk-orchestrator.ts) 拆批与单段回退。
+            - 新增 `/api/retry-units` 端点与 [DualColumnRow.tsx](src/workbench-ui/DualColumnRow.tsx) 失败翻译卡片旁的 **`↻ 重试本段翻译`** 及 **`一键重试全部失败段`** 按钮，局部失败无需重跑整篇文档。
+
           ### v1.1.8 主要更新
 
           - **修复大批量段落偶发漏译（自动拆半重试）**：当并发解析中单个批次（如 8 段）偶发限流/超时/校验异常时，[chunk-orchestrator.ts](src/core/engine/chunk-orchestrator.ts) 自动退避并将该批拆分为两小批逐个重试，避免直接丢弃整批译文。

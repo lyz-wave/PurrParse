@@ -9,6 +9,7 @@ import type {
   UnitQaThread,
   UserAnnotationsState,
   WorkbenchDocument,
+  WorkbenchUnit,
 } from "@/core/contracts/document-ast";
 import type { AnalysisSpeedMode } from "@/core/engine/chunk-orchestrator";
 import { inferDocumentTaxonomy } from "@/core/engine/library-organizer";
@@ -135,6 +136,7 @@ export interface WorkbenchStoreState {
   completeOnboarding: () => void;
   setActiveDocument: (id: string) => void;
   upsertDocument: (doc: WorkbenchDocument, options?: { activate?: boolean }) => void;
+  replaceDocumentUnits: (docId: string, updatedUnits: WorkbenchUnit[]) => void;
   setAnalysisSpeedMode: (mode: AnalysisSpeedMode) => void;
   addAnalysisTask: (task: AnalysisTaskItem) => void;
   updateAnalysisTask: (taskId: string, patch: Partial<AnalysisTaskItem>) => void;
@@ -407,6 +409,23 @@ export const useWorkbenchStore = create<WorkbenchStoreState>((set, get) => ({
     });
     void persistValue(STORAGE_KEYS.DOCUMENTS, nextDocs);
     void persistValue(STORAGE_KEYS.ACTIVE_DOC_ID, normalizedDoc.id);
+  },
+
+  replaceDocumentUnits: (docId, updatedUnits) => {
+    if (updatedUnits.length === 0) return;
+    const byId = new Map(updatedUnits.map((u) => [u.id, u]));
+    const existing = get().documents;
+    const nextDocs = existing.map((doc) => {
+      if (doc.id !== docId) return doc;
+      const nextUnits = doc.units.map((u) => byId.get(u.id) ?? u);
+      return {
+        ...doc,
+        units: nextUnits,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    set({ documents: nextDocs });
+    void persistValue(STORAGE_KEYS.DOCUMENTS, nextDocs);
   },
 
   setAnalysisSpeedMode: (analysisSpeedMode) => {
