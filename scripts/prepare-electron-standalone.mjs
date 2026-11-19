@@ -23,7 +23,7 @@ try {
     );
     process.exitCode = 1;
   } else {
-    const broken = copyStandaloneBundle(STANDALONE_SRC, OUT_DIR, { dereference: false });
+    const stats = copyStandaloneBundle(STANDALONE_SRC, OUT_DIR);
 
     const staticDest = path.join(OUT_DIR, ".next", "static");
     fs.mkdirSync(toWinFsPath(path.dirname(staticDest)), { recursive: true });
@@ -46,11 +46,13 @@ try {
       throw new Error(`[prepare-electron-standalone] Staged bundle missing node_modules/next in ${OUT_DIR}`);
     }
 
-    if (broken > 0) {
-      console.log(`[prepare-electron-standalone] Found ${broken} broken symlinks.`);
+    if (stats.brokenSymlinks > 0) {
+      console.log(`[prepare-electron-standalone] Found ${stats.brokenSymlinks} unflattened symlinks.`);
       process.exitCode = 1;
     } else {
-      console.log(`[prepare-electron-standalone] Ready: ${OUT_DIR}`);
+      console.log(
+        `[prepare-electron-standalone] Ready: ${OUT_DIR} (${stats.fileCount} files, maxRelPathLen=${stats.maxRelPathLen})`
+      );
     }
   }
 } catch (err) {

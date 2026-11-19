@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.0)"
+        description: "Release tag name (e.g. v1.1.1)"
         required: true
-        default: "v1.1.0"
+        default: "v1.1.1"
 
 permissions:
   contents: write
@@ -33,13 +33,24 @@ jobs:
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create Release if missing
+      - name: Create or update Release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "PurrParse $TAG" --generate-notes
+          cat <<'EOF' > /tmp/release-notes.md
+          ### 安装与首次运行说明
+
+          - **macOS（Apple Silicon `arm64` / Intel `x64`）**：本版本为开源自签名版（未购 Apple 开发者公证证书）。将 `PurrParse.app` 拖入「应用程序」后，若因浏览器隔离属性触发“**已损坏，无法打开**”提示，在终端运行一次下方命令即可正常启动：
+            ```sh
+            xattr -cr /Applications/PurrParse.app
+            ```
+          - **Windows（`x64` / `ARM64`）**：若安装或运行前触发 Microsoft Defender SmartScreen 安全拦截，点击「**更多信息**」→「**仍要运行**」即可。`v1.1.1` 已完成 `.next/standalone` 依赖树扁平化（移除超深 `.pnpm` 嵌套路径并解决 `MAX_PATH` 限制）及启动环境诊断增强。
+          EOF
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file /tmp/release-notes.md
+          else
+            gh release create "$TAG" --title "PurrParse $TAG" --notes-file /tmp/release-notes.md
           fi
 
   build-desktop:
@@ -51,15 +62,18 @@ jobs:
         include:
           - label: macOS Apple Silicon (arm64)
             os: macos-latest
-            builder_args: --mac dmg --arm64 --publish never
+            platform: mac
+            commands: "npx electron-builder --mac dmg --arm64 --publish never"
             pattern: dist-electron/*.dmg
           - label: macOS Intel (x64)
             os: macos-15-intel
-            builder_args: --mac dmg --x64 --publish never
+            platform: mac
+            commands: "npx electron-builder --mac dmg --x64 --publish never"
             pattern: dist-electron/*.dmg
           - label: Windows (x64 & arm64)
             os: windows-latest
-            builder_args: --win nsis --x64 --arm64 --publish never
+            platform: win
+            commands: "npx electron-builder --win nsis --x64 --publish never && npx electron-builder --win nsis --arm64 --publish never"
             pattern: dist-electron/*.exe
 
     runs-on: ${{ matrix.os }}
@@ -89,10 +103,23 @@ jobs:
       - name: Package PurrParse Desktop (${{ matrix.label }})
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        shell: bash
         run: |
           npm run build
           npm run desktop:prepare
-          npx electron-builder ${{ matrix.builder_args }}
+          eval "${{ matrix.commands }}"
+
+      - name: Smoke-test packaged standalone & signature (${{ matrix.label }})
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" == "mac" ]]; then
+            APP_DIR=$(ls -d dist-electron/mac*/PurrParse.app | head -n 1)
+            codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+            node scripts/verify-standalone.cjs "$APP_DIR/Contents/Resources/standalone" "$APP_DIR/Contents/MacOS/PurrParse"
+          else
+            node scripts/verify-standalone.cjs dist-electron/win-unpacked/resources/standalone dist-electron/win-unpacked/PurrParse.exe
+            node scripts/verify-standalone.cjs dist-electron/win-arm64-unpacked/resources/standalone
+          fi
 
       - name: Upload installers to GitHub Release
         env:

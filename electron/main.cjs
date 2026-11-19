@@ -123,18 +123,59 @@ function probeHealth(origin) {
   });
 }
 
-async function waitForServerReady(origin, timeoutMs = 25000) {
+async function waitForServerReady(origin, timeoutMs = 45000, getTailLogs = () => "") {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (serverProcess && serverProcess.exitCode !== null) {
-      throw new Error(`Next.js standalone server exited early with code ${serverProcess.exitCode}`);
+      const tail = getTailLogs();
+      throw new Error(
+        `Next.js standalone server exited early with code ${serverProcess.exitCode}${
+          tail ? `\n\n最近服务日志：\n${tail}` : ""
+        }`
+      );
     }
     if (await probeHealth(origin)) {
       return;
     }
     await new Promise((r) => setTimeout(r, 120));
   }
-  throw new Error("Timed out waiting for PurrParse local server to become ready.");
+  const tail = getTailLogs();
+  throw new Error(
+    `Timed out waiting for PurrParse local server to become ready.${
+      tail ? `\n\n最近服务日志：\n${tail}` : ""
+    }`
+  );
+}
+
+function buildServerEnv(port, cacheDir) {
+  const childEnv = {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: "1",
+    NODE_ENV: "production",
+    HOSTNAME: "127.0.0.1",
+    PORT: String(port),
+    PURRPARSE_CACHE_DIR: cacheDir,
+  };
+
+  const homeBin = path.join(os.homedir(), ".local", "bin");
+  if (process.platform === "win32") {
+    const pathKey = Object.keys(childEnv).find((k) => k.toLowerCase() === "path") || "Path";
+    const currentPath = childEnv[pathKey] || "";
+    if (fs.existsSync(homeBin)) {
+      childEnv[pathKey] = currentPath ? `${homeBin}${path.delimiter}${currentPath}` : homeBin;
+    }
+    return childEnv;
+  }
+
+  const extraPaths = [
+    homeBin,
+    "/opt/miniconda3/bin",
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+  ];
+  const basePath = childEnv.PATH || "/usr/bin:/bin:/usr/sbin:/sbin";
+  childEnv.PATH = [...extraPaths, basePath].filter(Boolean).join(path.delimiter);
+  return childEnv;
 }
 
 async function startEmbeddedServer() {
@@ -164,36 +205,33 @@ async function startEmbeddedServer() {
   const cacheDir = path.join(app.getPath("userData"), "v2t-cache");
   fs.mkdirSync(cacheDir, { recursive: true });
 
-  const homeBin = path.join(os.homedir(), ".local", "bin");
-  const augmentedPath = [
-    homeBin,
-    "/opt/miniconda3/bin",
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    process.env.PATH || "/usr/bin:/bin:/usr/sbin:/sbin",
-  ].join(":");
+  const recentServerLogs = [];
+  const appendLogTail = (chunk) => {
+    logStream?.write(chunk);
+    for (const line of chunk.toString("utf8").split(/\r?\n/)) {
+      const trimmed = line.trimEnd();
+      if (!trimmed) continue;
+      recentServerLogs.push(trimmed);
+      if (recentServerLogs.length > 25) {
+        recentServerLogs.shift();
+      }
+    }
+  };
 
   serverProcess = spawn(process.execPath, [serverEntry], {
     cwd: standaloneDir,
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: "1",
-      NODE_ENV: "production",
-      HOSTNAME: "127.0.0.1",
-      PORT: String(port),
-      PURRPARSE_CACHE_DIR: cacheDir,
-      PATH: augmentedPath,
-    },
+    windowsHide: true,
+    env: buildServerEnv(port, cacheDir),
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  serverProcess.stdout?.on("data", (chunk) => logStream?.write(chunk));
-  serverProcess.stderr?.on("data", (chunk) => logStream?.write(chunk));
+  serverProcess.stdout?.on("data", appendLogTail);
+  serverProcess.stderr?.on("data", appendLogTail);
   serverProcess.on("exit", (code, signal) => {
     logStream?.write(`\n[electron] server exited (code=${code}, signal=${signal})\n`);
   });
 
-  await waitForServerReady(origin);
+  await waitForServerReady(origin, 45000, () => recentServerLogs.join("\n"));
   return origin;
 }
 
