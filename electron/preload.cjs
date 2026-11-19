@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld("purrparseDesktop", {
     chrome: process.versions.chrome,
     node: process.versions.node,
   },
+  windowControls: {
+    setTheme: (themeMode) => ipcRenderer.send("purrparse:window:set-theme", themeMode),
+  },
   updater: {
     getState: () => ipcRenderer.invoke("purrparse:updater:get-state"),
     checkForUpdates: () => ipcRenderer.invoke("purrparse:updater:check"),

@@ -29,7 +29,7 @@ import {
 } from "./analysis-task-manager";
 import { detectOmniSource, filesToSourcePayload } from "./analyze-client";
 import { TasksTopbarPill } from "./BackgroundTasksDock";
-import { isMacDesktopRuntime } from "./desktop-runtime";
+import { isMacDesktopRuntime, isWinDesktopRuntime } from "./desktop-runtime";
 
 const THEME_CYCLE_ORDER: WorkbenchThemeMode[] = ["paper", "aurora", "studio"];
 
@@ -163,6 +163,7 @@ export function WorkspaceHome({
   };
 
   const isMacDesktop = useMemo(() => isMacDesktopRuntime(), []);
+  const isWinDesktop = useMemo(() => isWinDesktopRuntime(), []);
 
   const activePlugin = useMemo(
     () => plugins.find((p) => p.id === selectedModeId) ?? plugins[0],
@@ -415,6 +416,8 @@ export function WorkspaceHome({
       {/* Top Translucent Frosted Liquid Glass Chrome + FluidOrb Dynamic Fog */}
       <header
         data-testid="home-topbar"
+        data-mac-desktop={isMacDesktop ? "true" : "false"}
+        data-win-desktop={isWinDesktop ? "true" : "false"}
         style={getTopbarGlassStyle(themeMode)}
         className={`sticky top-0 z-30 h-12 border-b electron-drag transition-colors duration-200 ${
           isDark ? "text-slate-100" : "text-[#1a2744]"
@@ -424,7 +427,7 @@ export function WorkspaceHome({
         <div
           className={`relative z-10 max-w-[1460px] mx-auto h-full px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-3 ${
             isMacDesktop ? "pl-[84px]" : ""
-          }`}
+          } ${isWinDesktop ? "pr-[144px] sm:pr-[148px]" : ""}`}
         >
           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 electron-no-drag">
             <div className="group flex items-center gap-1.5 sm:gap-2 shrink-0 select-none">

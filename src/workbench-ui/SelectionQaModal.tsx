@@ -23,6 +23,7 @@ import {
   type StreamingResponseStatus,
 } from "@/components/ui/streaming-response";
 import { MathText } from "@/workbench-ui/math-text";
+import { isWinDesktopRuntime } from "./desktop-runtime";
 
 export interface SelectionQaOpenPayload {
   unitId: string;
@@ -652,7 +653,7 @@ export const SelectionQaModal: React.FC<SelectionQaModalProps> = ({
         <PanelGlassHeader
           testId="qa-drawer-header"
           themeMode={themeMode}
-          className="py-4"
+          className={isWinDesktopRuntime() ? "pt-12 pb-3" : "py-4"}
           left={
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">

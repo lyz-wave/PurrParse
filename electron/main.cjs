@@ -370,6 +370,24 @@ function triggerMenuCheckForUpdates() {
 }
 
 function registerUpdaterIpcHandlers() {
+  ipcMain.on("purrparse:window:set-theme", (_event, themeMode) => {
+    if (
+      process.platform === "win32" &&
+      mainWindow &&
+      !mainWindow.isDestroyed() &&
+      typeof mainWindow.setTitleBarOverlay === "function"
+    ) {
+      try {
+        mainWindow.setTitleBarOverlay({
+          color: "#00000000",
+          symbolColor: themeMode === "aurora" ? "#e2e8f0" : "#1a2744",
+          height: 48,
+        });
+      } catch {
+        // ignore if unsupported
+      }
+    }
+  });
   if (!desktopUpdater) return;
   ipcMain.handle("purrparse:updater:get-state", () => desktopUpdater.getState());
   ipcMain.handle("purrparse:updater:check", () => desktopUpdater.checkForUpdates());
@@ -382,29 +400,30 @@ function registerUpdaterIpcHandlers() {
 
 function buildAppMenu() {
   const isMac = process.platform === "darwin";
+  if (!isMac) {
+    // Windows/Linux use an integrated frameless Window Controls Overlay top bar with no menu strip
+    Menu.setApplicationMenu(null);
+    return;
+  }
   const template = [
-    ...(isMac
-      ? [
-          {
-            label: APP_TITLE,
-            submenu: [
-              { role: "about", label: "关于 PurrParse" },
-              {
-                label: "检查更新…",
-                click: triggerMenuCheckForUpdates,
-              },
-              { type: "separator" },
-              { role: "services" },
-              { type: "separator" },
-              { role: "hide", label: "隐藏 PurrParse" },
-              { role: "hideOthers", label: "隐藏其他" },
-              { role: "unhide", label: "显示全部" },
-              { type: "separator" },
-              { role: "quit", label: "退出 PurrParse" },
-            ],
-          },
-        ]
-      : []),
+    {
+      label: APP_TITLE,
+      submenu: [
+        { role: "about", label: "关于 PurrParse" },
+        {
+          label: "检查更新…",
+          click: triggerMenuCheckForUpdates,
+        },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide", label: "隐藏 PurrParse" },
+        { role: "hideOthers", label: "隐藏其他" },
+        { role: "unhide", label: "显示全部" },
+        { type: "separator" },
+        { role: "quit", label: "退出 PurrParse" },
+      ],
+    },
     {
       label: "文件",
       submenu: [
@@ -417,7 +436,7 @@ function buildAppMenu() {
             }
           },
         },
-        isMac ? { role: "close", label: "关闭窗口" } : { role: "quit", label: "退出" },
+        { role: "close", label: "关闭窗口" },
       ],
     },
     {
@@ -449,34 +468,17 @@ function buildAppMenu() {
       submenu: [
         { role: "minimize", label: "最小化" },
         { role: "zoom", label: "缩放" },
-        ...(isMac ? [{ type: "separator" }, { role: "front", label: "前置全部窗口" }] : []),
+        { type: "separator" },
+        { role: "front", label: "前置全部窗口" },
       ],
     },
-    ...(!isMac
-      ? [
-          {
-            label: "帮助",
-            submenu: [
-              {
-                label: "检查更新…",
-                click: triggerMenuCheckForUpdates,
-              },
-              {
-                label: "前往下载主页",
-                click: () => {
-                  shell.openExternal("https://purrparse.xyz");
-                },
-              },
-            ],
-          },
-        ]
-      : []),
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function createMainWindow() {
   const isMac = process.platform === "darwin";
+  const isWin = process.platform === "win32";
   mainWindow = new BrowserWindow({
     width: 1460,
     height: 920,
@@ -484,8 +486,18 @@ function createMainWindow() {
     minHeight: 700,
     title: APP_TITLE,
     backgroundColor: "#142038",
-    titleBarStyle: isMac ? "hiddenInset" : "default",
+    titleBarStyle: isMac ? "hiddenInset" : isWin ? "hidden" : "default",
     ...(isMac ? { trafficLightPosition: { x: 16, y: 17 } } : {}),
+    ...(isWin
+      ? {
+          titleBarOverlay: {
+            color: "#00000000",
+            symbolColor: "#0f172a",
+            height: 48,
+          },
+          autoHideMenuBar: true,
+        }
+      : {}),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -494,6 +506,26 @@ function createMainWindow() {
       sandbox: true,
     },
   });
+
+  if (!isMac) {
+    mainWindow.setMenuBarVisibility(false);
+    mainWindow.webContents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown") return;
+      const ctrlOrCmd = input.control || input.meta;
+      if (ctrlOrCmd && input.key.toLowerCase() === "r") {
+        event.preventDefault();
+        if (mainWindow && serverOrigin) {
+          mainWindow.loadURL(serverOrigin);
+        }
+      } else if (input.key === "F12" || (ctrlOrCmd && input.shift && input.key.toLowerCase() === "i")) {
+        event.preventDefault();
+        mainWindow?.webContents.toggleDevTools();
+      } else if (input.key === "F11") {
+        event.preventDefault();
+        if (mainWindow) mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      }
+    });
+  }
 
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();

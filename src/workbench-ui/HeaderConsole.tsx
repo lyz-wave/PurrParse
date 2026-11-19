@@ -10,7 +10,7 @@ import type {
   WorkbenchDocument,
 } from "@/core/contracts/document-ast";
 import type { ReadingDepthMode, WorkbenchThemeMode } from "@/store/workbench-store";
-import { isMacDesktopRuntime } from "./desktop-runtime";
+import { isMacDesktopRuntime, isWinDesktopRuntime } from "./desktop-runtime";
 
 const COLOR_DOT: Record<ColorSlot, string> = {
   yellow: "bg-amber-400",
@@ -149,6 +149,7 @@ export function HeaderConsole({
   const [barVisible, setBarVisible] = useState(true);
   const [isAtTop, setIsAtTop] = useState(true);
   const [isMacDesktop, setIsMacDesktop] = useState(false);
+  const [isWinDesktop, setIsWinDesktop] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredDepth, setHoveredDepth] = useState<ReadingDepthMode | null>(null);
@@ -165,6 +166,7 @@ export function HeaderConsole({
 
   useEffect(() => {
     setIsMacDesktop(isMacDesktopRuntime());
+    setIsWinDesktop(isWinDesktopRuntime());
   }, []);
 
   useEffect(() => {
@@ -284,11 +286,12 @@ export function HeaderConsole({
   const fogSecondary = hasCodeUnits ? "#14b8a6" : undefined;
 
   const isAutoHidden = autoHideHeader && !barVisible;
+  const hasIntegratedTitlebar = isMacDesktop || isWinDesktop;
 
   return (
     <>
       {/* Top-edge hover reveal zone when web sticky bar is auto-hidden */}
-      {!isMacDesktop && isAutoHidden && (
+      {!hasIntegratedTitlebar && isAutoHidden && (
         <div
           aria-hidden="true"
           onMouseEnter={() => setBarVisible(true)}
@@ -302,6 +305,7 @@ export function HeaderConsole({
         data-testid="sticky-toolbar"
         data-hidden={isAutoHidden ? "true" : "false"}
         data-mac-desktop={isMacDesktop ? "true" : "false"}
+        data-win-desktop={isWinDesktop ? "true" : "false"}
         style={getTopbarGlassStyle(themeMode)}
         onMouseEnter={() => {
           if (isAutoHidden) setBarVisible(true);
@@ -309,9 +313,9 @@ export function HeaderConsole({
         className={`sticky top-0 z-30 border-b transition-all duration-200 ${
           isDarkGlass ? "text-slate-100" : "text-[#1a2744]"
         } ${
-          isMacDesktop ? "electron-drag" : ""
+          hasIntegratedTitlebar ? "electron-drag" : ""
         } ${
-          !isMacDesktop && isAutoHidden
+          !hasIntegratedTitlebar && isAutoHidden
             ? "-translate-y-full opacity-0 pointer-events-none"
             : "translate-y-0 opacity-100"
         }`}
@@ -324,12 +328,12 @@ export function HeaderConsole({
         <div
           className={`relative z-10 w-full max-w-[1640px] mx-auto px-4 py-1.5 flex items-center justify-between gap-4 min-h-[48px] ${
             isMacDesktop ? "pl-[84px]" : ""
-          }`}
+          } ${isWinDesktop ? "pr-[144px] sm:pr-[148px]" : ""}`}
         >
           {/* Left: Global Library, New Import & Chapter Jump (Ghost minimalist controls) */}
           <div
             className={`flex items-center gap-1.5 shrink-0 electron-no-drag transition-opacity duration-150 ${
-              isMacDesktop && isAutoHidden ? "opacity-0 pointer-events-none" : "opacity-100"
+              hasIntegratedTitlebar && isAutoHidden ? "opacity-0 pointer-events-none" : "opacity-100"
             }`}
           >
             {onOpenHome && (
@@ -435,7 +439,7 @@ export function HeaderConsole({
 
           {/* Center: Spacious Drag Zone & Subtle Scrolled Document Title */}
           <div className="flex-1 min-w-0 flex items-center justify-center px-4 pointer-events-none">
-            {(!isAtTop || (isMacDesktop && isAutoHidden)) && (
+            {(!isAtTop || (hasIntegratedTitlebar && isAutoHidden)) && (
               <span
                 className={`text-xs font-medium truncate max-w-[420px] ${
                   isDarkGlass ? "text-slate-100/90" : "text-[#1a2744]/85"
@@ -449,7 +453,7 @@ export function HeaderConsole({
           {/* Right: Compact Filter Drawer, Reading Depth, Theme Cycle & Settings */}
           <div
             className={`flex items-center gap-1.5 shrink-0 electron-no-drag transition-opacity duration-150 ${
-              isMacDesktop && isAutoHidden ? "opacity-0 pointer-events-none" : "opacity-100"
+              hasIntegratedTitlebar && isAutoHidden ? "opacity-0 pointer-events-none" : "opacity-100"
             }`}
           >
             {/* Compact filter popover so scrolled readers stay 1 click away from filters */}

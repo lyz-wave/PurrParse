@@ -21,6 +21,9 @@ export interface PurrParseDesktopBridge {
     chrome?: string;
     node?: string;
   };
+  windowControls?: {
+    setTheme?: (themeMode: string) => void;
+  };
   updater?: PurrParseDesktopUpdaterBridge;
 }
 
@@ -38,4 +41,19 @@ export function getDesktopBridge(): PurrParseDesktopBridge | null {
 export function isMacDesktopRuntime(): boolean {
   const bridge = getDesktopBridge();
   return Boolean(bridge?.isDesktop && bridge?.platform === "darwin");
+}
+
+/**
+ * Returns true when running inside the packaged/dev Electron Windows window
+ * where Window Controls Overlay (min/max/close) sits inside a unified frameless top bar.
+ */
+export function isWinDesktopRuntime(): boolean {
+  const bridge = getDesktopBridge();
+  return Boolean(bridge?.isDesktop && bridge?.platform === "win32");
+}
+
+/** Syncs Electron Windows titleBarOverlay symbol color to match light/dark theme mode. */
+export function syncDesktopWindowTheme(themeMode: string): void {
+  const bridge = getDesktopBridge();
+  bridge?.windowControls?.setTheme?.(themeMode);
 }

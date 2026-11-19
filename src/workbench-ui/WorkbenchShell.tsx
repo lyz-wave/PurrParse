@@ -18,7 +18,11 @@ import {
 } from "./analysis-task-manager";
 import { BackgroundTasksDock, TasksTopbarPill } from "./BackgroundTasksDock";
 import { BottomArsenalRenderer } from "./BottomArsenalRenderer";
-import { isMacDesktopRuntime } from "./desktop-runtime";
+import {
+  isMacDesktopRuntime,
+  isWinDesktopRuntime,
+  syncDesktopWindowTheme,
+} from "./desktop-runtime";
 import { DualColumnRow, isFailedTranslationUnit } from "./DualColumnRow";
 import { GlobalTooltip } from "./GlobalTooltip";
 import { HeaderConsole } from "./HeaderConsole";
@@ -156,6 +160,7 @@ export function WorkbenchShell() {
   const [selectionPill, setSelectionPill] = useState<SelectionPillState | null>(null);
   const [selectionCopied, setSelectionCopied] = useState(false);
   const [isMacDesktop, setIsMacDesktop] = useState(false);
+  const [isWinDesktop, setIsWinDesktop] = useState(false);
   const [tasksDockOpen, setTasksDockOpen] = useState(false);
   const [retryingUnitIds, setRetryingUnitIds] = useState<Record<string, boolean>>({});
   const [retryingAllFailed, setRetryingAllFailed] = useState(false);
@@ -174,7 +179,12 @@ export function WorkbenchShell() {
 
   useEffect(() => {
     setIsMacDesktop(isMacDesktopRuntime());
+    setIsWinDesktop(isWinDesktopRuntime());
   }, []);
+
+  useEffect(() => {
+    syncDesktopWindowTheme(themeMode);
+  }, [themeMode]);
 
   useEffect(() => {
     if (libraryOpen || studioOpen || settingsOpen || onboardingOpen || selectionQaPayload) {
@@ -511,10 +521,12 @@ export function WorkbenchShell() {
         />
       ) : (
         <>
-          {isPureMode && isMacDesktop && (
+          {isPureMode && (isMacDesktop || isWinDesktop) && (
             <div
               aria-hidden="true"
-              className="sticky top-0 z-30 h-9 w-full electron-drag bg-transparent"
+              className={`sticky top-0 z-30 w-full electron-drag bg-transparent ${
+                isWinDesktop ? "h-12" : "h-9"
+              }`}
             />
           )}
           {!isPureMode && (

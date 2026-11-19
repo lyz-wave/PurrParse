@@ -1171,6 +1171,93 @@ describe("Active-Learning UI Components (Blind & Mode-Agnostic)", () => {
     }
   });
 
+  it("integrates Windows Window Controls Overlay cleanly into unified single-bar chrome without crowding", async () => {
+    const win = window as unknown as {
+      purrparseDesktop?: {
+        isDesktop?: boolean;
+        platform?: string;
+        windowControls?: { setTheme?: (themeMode: string) => void };
+      };
+    };
+    const prevBridge = win.purrparseDesktop;
+    const setThemeMock = vi.fn();
+    win.purrparseDesktop = {
+      isDesktop: true,
+      platform: "win32",
+      windowControls: { setTheme: setThemeMock },
+    };
+
+    try {
+      const cognitiveDoc = DEMO_DOCUMENTS[1];
+      const headerView = render(
+        <HeaderConsole
+          doc={cognitiveDoc}
+          activeDimFilter={null}
+          paretoMode={false}
+          firstPassMode={false}
+          fuzzyOnlyMode={false}
+          autoHideHeader={true}
+          themeMode="aurora"
+          readingDepthMode="workbench"
+          onThemeChange={() => {}}
+          onReadingDepthChange={() => {}}
+          onToggleDim={() => {}}
+          onTogglePareto={() => {}}
+          onToggleFirstPass={() => {}}
+          onToggleFuzzyOnly={() => {}}
+          onOpenLibrary={() => {}}
+          onOpenStudio={() => {}}
+          onOpenSettings={() => {}}
+        />
+      );
+
+      await waitFor(() => {
+        expect(headerView.getByTestId("sticky-toolbar").getAttribute("data-win-desktop")).toBe("true");
+      });
+      const winToolbar = headerView.getByTestId("sticky-toolbar");
+      expect(winToolbar.getAttribute("data-mac-desktop")).toBe("false");
+      expect(winToolbar.className).toContain("electron-drag");
+      expect(winToolbar.innerHTML).toContain("pr-[144px]");
+      headerView.unmount();
+
+      const homeView = render(
+        <WorkspaceHome
+          documents={DEMO_DOCUMENTS}
+          activeDocumentId={DEMO_DOCUMENTS[0].id}
+          annotationsByDoc={{}}
+          llmConfig={{ provider: "google", apiKey: "", model: "gemini-2.5-flash" }}
+          themeMode="paper"
+          startOnHome={true}
+          onThemeChange={() => {}}
+          onToggleStartOnHome={() => {}}
+          onOpenDocument={() => {}}
+          onOpenReview={() => {}}
+          onOpenLibrary={() => {}}
+          onOpenStudio={() => {}}
+          onOpenSettings={() => {}}
+          onOpenApiSettings={() => {}}
+          onOpenOnboarding={() => {}}
+          onDocumentReady={() => {}}
+        />
+      );
+
+      const homeTopbar = homeView.getByTestId("home-topbar");
+      expect(homeTopbar.getAttribute("data-win-desktop")).toBe("true");
+      expect(homeTopbar.className).toContain("electron-drag");
+      expect(homeTopbar.innerHTML).toContain("pr-[144px]");
+      homeView.unmount();
+
+      win.purrparseDesktop?.windowControls?.setTheme?.("aurora");
+      expect(setThemeMock).toHaveBeenCalledWith("aurora");
+    } finally {
+      if (prevBridge === undefined) {
+        delete win.purrparseDesktop;
+      } else {
+        win.purrparseDesktop = prevBridge;
+      }
+    }
+  });
+
   it("shows floating '问 AI' pill on left-mouse text selection and opens slide-over AI drawer", async () => {
     const paperDoc = DEMO_DOCUMENTS[0];
     const targetUnit = paperDoc.units[0];

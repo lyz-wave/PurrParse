@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.10)"
+        description: "Release tag name (e.g. v1.1.11)"
         required: true
-        default: "v1.1.10"
+        default: "v1.1.11"
 
 permissions:
   contents: write
@@ -39,6 +39,13 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           cat <<'EOF' > /tmp/release-notes.md
+          ### v1.1.11 主要更新（Windows 一体化无边框顶栏重构）
+
+          - **Windows 版采用一体化 Window Controls Overlay 顶栏设计**：
+            - 移除传统双层标题栏与“文件 / 编辑 / 视图 / 窗口 / 帮助”菜单栏，主界面直接延伸至窗口顶部边缘，`— □ ✕` 窗口控制按钮透明融合在 48px 液态毛玻璃顶栏最右侧；顶栏空白处可自由拖拽移动窗口（仍保留 `Ctrl+R`、`F12`、`F11` 快捷键）。
+            - 支持 `稿纸 / 夜空 / 纯白` 三态主题动态同步：切换深色夜空主题时，Windows 右上角 `— □ ✕` 按钮符号自动切换为高亮浅色，保证高对比清晰可读；同时为通读模式与右侧 AI 划词抽屉补充顶部避让空间。
+          - **注**：由于本次升级涉及桌面主进程窗口壳层架构调整（`shellHash` 变更），Windows / macOS 从旧版升级时会在应用内自动回退下载 `v1.1.11` 完整安装包完成一次性升级。
+
           ### v1.1.10 主要更新（支持 v1.1.8 / v1.1.9 增量热更新）
 
           - **彻底规范翻译 vs 拆解职责，中文原文不再多余生成“假译文/摘要”**：
