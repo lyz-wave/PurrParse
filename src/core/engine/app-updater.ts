@@ -2,7 +2,7 @@ export const APP_GITHUB_REPO = "lyz-wave/PurrParse";
 export const APP_RELEASES_PAGE_URL = `https://github.com/${APP_GITHUB_REPO}/releases`;
 export const APP_LATEST_RELEASE_URL = `${APP_RELEASES_PAGE_URL}/latest`;
 export const APP_DOWNLOAD_PAGE_URL = "https://purrparse.xyz";
-export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.1.6";
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.1.7";
 
 export type AppUpdateStatus =
   | "idle"
@@ -16,7 +16,7 @@ export type AppUpdateStatus =
 
 export type AppUpdatePlatform = "darwin" | "win32" | "linux" | "web";
 export type AppUpdateArch = "arm64" | "x64" | "unknown";
-export type AppUpdateInstallMode = "self-replace" | "installer" | "external-download";
+export type AppUpdateInstallMode = "hot-patch" | "self-replace" | "installer" | "external-download";
 export type AppUpdateSource = "github-api" | "github-redirect";
 
 export interface ReleaseAssetMeta {
@@ -43,6 +43,7 @@ export interface AppUpdateState {
   downloadedFilePath: string | null;
   canAutoInstall: boolean;
   installMode: AppUpdateInstallMode;
+  updateChannel?: "patch" | "full" | null;
   checkedAt: number | null;
   error: string | null;
   source: AppUpdateSource | null;
@@ -218,7 +219,7 @@ export function createInitialUpdateState(
 ): AppUpdateState {
   return {
     status: "idle",
-    currentVersion: normalizeVersion(currentVersion) || "1.1.6",
+    currentVersion: normalizeVersion(currentVersion) || "1.1.7",
     latestVersion: null,
     hasUpdate: false,
     releaseNotes: "",
@@ -234,6 +235,7 @@ export function createInitialUpdateState(
     downloadedFilePath: null,
     canAutoInstall: false,
     installMode: isDesktop ? "installer" : "external-download",
+    updateChannel: null,
     checkedAt: null,
     error: null,
     source: null,
@@ -289,7 +291,7 @@ export async function fetchLatestReleaseInfo({
   fetchImpl = fetch,
   timeoutMs = 8000,
 }: FetchLatestReleaseOptions): Promise<LatestReleaseResolution> {
-  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.6";
+  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.7";
 
   // Tier 1: GitHub REST API
   try {

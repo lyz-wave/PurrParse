@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.6)"
+        description: "Release tag name (e.g. v1.1.7)"
         required: true
-        default: "v1.1.6"
+        default: "v1.1.7"
 
 permissions:
   contents: write
@@ -39,6 +39,10 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           cat <<'EOF' > /tmp/release-notes.md
+          ### v1.1.7 主要更新
+
+          - **双轨增量补丁更新（~3–5 MB 秒级热切换）**：每次发版同步产出轻量 `PurrParse-patch-<version>.tar.gz` 与 `PurrParse-patch-manifest.json`（含 `shellHash` / `depsHash` 指纹与 SHA-256 校验）。从 `v1.1.7` 起，纯业务层（前端 UI、Prompt、模型适配器、API）更新只需下载几 MB 增量补丁解压到 `userData/hot-standalone` 并自动重启，不再破坏 macOS 签名；当 Electron 壳或依赖树变更时自动安全回退全量安装包，且内置启动崩溃自动回滚保护。
+
           ### v1.1.6 主要更新
 
           - **修复极速模式 / 长文顶层脚手架截断报错 (`No object generated`)**：
@@ -84,8 +88,8 @@ jobs:
           - label: macOS Apple Silicon (arm64)
             os: macos-latest
             platform: mac
-            commands: "npx electron-builder --mac dmg --arm64 --publish never"
-            pattern: dist-electron/*.dmg
+            commands: "npx electron-builder --mac dmg --arm64 --publish never && node scripts/build-patch-bundle.mjs"
+            pattern: dist-electron/*.dmg dist-electron/PurrParse-patch-*.tar.gz dist-electron/PurrParse-patch-manifest.json
           - label: macOS Intel (x64)
             os: macos-15-intel
             platform: mac

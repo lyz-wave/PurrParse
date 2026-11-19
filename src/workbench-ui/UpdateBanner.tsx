@@ -47,11 +47,13 @@ export function UpdateBanner({
     : "border-[#ddd6c7] text-[#1a2744] hover:bg-[#f2ece0]";
 
   const installLabel =
-    state.installMode === "self-replace"
-      ? "重启并更新"
-      : state.installMode === "installer" && state.assetName?.endsWith(".dmg")
-        ? "打开安装包"
-        : "安装并重启";
+    state.installMode === "hot-patch"
+      ? "重启并应用补丁"
+      : state.installMode === "self-replace"
+        ? "重启并更新"
+        : state.installMode === "installer" && state.assetName?.endsWith(".dmg")
+          ? "打开安装包"
+          : "安装并重启";
 
   const headline =
     state.status === "downloading"
@@ -89,11 +91,13 @@ export function UpdateBanner({
                       state.bytesPerSecond > 0 ? ` · ${formatBytes(state.bytesPerSecond)}/s` : ""
                     }`
                   : state.status === "downloaded"
-                    ? state.installMode === "self-replace"
-                      ? "已完成本地下载，点击即可自动替换并重启应用。"
-                      : state.assetName?.endsWith(".dmg")
-                        ? "已完成下载，点击打开 DMG 镜像拖入「应用程序」覆盖即可。"
-                        : "安装程序已就绪，点击后将关闭当前窗口并启动向导。"
+                    ? state.installMode === "hot-patch"
+                      ? "轻量增量补丁已就绪，点击即可秒级应用并重启。"
+                      : state.installMode === "self-replace"
+                        ? "已完成本地下载，点击即可自动替换并重启应用。"
+                        : state.assetName?.endsWith(".dmg")
+                          ? "已完成下载，点击打开 DMG 镜像拖入「应用程序」覆盖即可。"
+                          : "安装程序已就绪，点击后将关闭当前窗口并启动向导。"
                     : state.status === "installing"
                       ? "正在退出当前服务并应用新版本，请稍候…"
                       : `当前版本 v${state.currentVersion} -> v${state.latestVersion ?? ""}，点击即可升级。`}

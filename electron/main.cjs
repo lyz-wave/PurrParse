@@ -5,7 +5,7 @@ const http = require("node:http");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
-const { createDesktopUpdater } = require("./updater.cjs");
+const { createDesktopUpdater, compareSemver, normalizeVersion } = require("./updater.cjs");
 
 const PREFERRED_PORT = 18923;
 const APP_TITLE = "PurrParse";
@@ -66,15 +66,76 @@ function createSplashDataUrl() {
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
-function getStandaloneServerPath() {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, "standalone", "server.js");
+function readJsonSafe(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
   }
-  const staged = path.join(app.getAppPath(), "electron-resources", "standalone", "server.js");
-  if (fs.existsSync(staged)) {
+}
+
+function getBundledStandaloneDir() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "standalone");
+  }
+  const staged = path.join(app.getAppPath(), "electron-resources", "standalone");
+  if (fs.existsSync(path.join(staged, "server.js"))) {
     return staged;
   }
-  return path.join(app.getAppPath(), ".next", "standalone", "server.js");
+  return path.join(app.getAppPath(), ".next", "standalone");
+}
+
+function getHotStandaloneDir() {
+  return path.join(app.getPath("userData"), "hot-standalone");
+}
+
+function getBundledMeta() {
+  return readJsonSafe(path.join(getBundledStandaloneDir(), "standalone-meta.json"));
+}
+
+function resolveStandaloneRuntime() {
+  const bundledDir = getBundledStandaloneDir();
+  const bundledMeta = getBundledMeta();
+  const bundledVersion = normalizeVersion((bundledMeta && bundledMeta.appVersion) || app.getVersion());
+  const hotDir = getHotStandaloneDir();
+  const hotServer = path.join(hotDir, "server.js");
+  const hotMeta = readJsonSafe(path.join(hotDir, "standalone-meta.json"));
+
+  const isHotValid =
+    bundledMeta &&
+    hotMeta &&
+    fs.existsSync(hotServer) &&
+    hotMeta.shellHash === bundledMeta.shellHash &&
+    hotMeta.depsHash === bundledMeta.depsHash &&
+    compareSemver(normalizeVersion(hotMeta.appVersion), bundledVersion) > 0;
+
+  if (isHotValid) {
+    return {
+      serverEntry: hotServer,
+      standaloneDir: hotDir,
+      bundledNodeModules: path.join(bundledDir, "node_modules"),
+      isHotPatch: true,
+      activeVersion: normalizeVersion(hotMeta.appVersion),
+    };
+  }
+
+  // Clean up obsolete or mismatched hot-patch directory automatically
+  if (fs.existsSync(hotDir)) {
+    try {
+      fs.rmSync(hotDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup failures
+    }
+  }
+
+  return {
+    serverEntry: path.join(bundledDir, "server.js"),
+    standaloneDir: bundledDir,
+    bundledNodeModules: path.join(bundledDir, "node_modules"),
+    isHotPatch: false,
+    activeVersion: bundledVersion,
+  };
 }
 
 function checkPortFree(port) {
@@ -149,7 +210,7 @@ async function waitForServerReady(origin, timeoutMs = 45000, getTailLogs = () =>
   );
 }
 
-function buildServerEnv(port, cacheDir) {
+function buildServerEnv(port, cacheDir, bundledNodeModules) {
   const childEnv = {
     ...process.env,
     ELECTRON_RUN_AS_NODE: "1",
@@ -157,6 +218,9 @@ function buildServerEnv(port, cacheDir) {
     HOSTNAME: "127.0.0.1",
     PORT: String(port),
     PURRPARSE_CACHE_DIR: cacheDir,
+    ...(bundledNodeModules && fs.existsSync(bundledNodeModules)
+      ? { NODE_PATH: bundledNodeModules }
+      : {}),
   };
 
   const homeBin = path.join(os.homedir(), ".local", "bin");
@@ -180,21 +244,14 @@ function buildServerEnv(port, cacheDir) {
   return childEnv;
 }
 
-async function startEmbeddedServer() {
-  const devUrl = !app.isPackaged ? process.env.ELECTRON_DEV_URL?.trim() : "";
-  if (devUrl) {
-    serverOrigin = devUrl.replace(/\/+$/, "");
-    return serverOrigin;
-  }
-
-  const serverEntry = getStandaloneServerPath();
+async function launchServerInstance(runtime) {
+  const { serverEntry, standaloneDir, bundledNodeModules } = runtime;
   if (!fs.existsSync(serverEntry)) {
     throw new Error(
       `Standalone server not found at ${serverEntry}. Please run npm run desktop:prepare or npm run desktop:pack.`
     );
   }
 
-  const standaloneDir = path.dirname(serverEntry);
   const port = await selectPort();
   const origin = `http://127.0.0.1:${port}`;
   serverOrigin = origin;
@@ -223,7 +280,7 @@ async function startEmbeddedServer() {
   serverProcess = spawn(process.execPath, [serverEntry], {
     cwd: standaloneDir,
     windowsHide: true,
-    env: buildServerEnv(port, cacheDir),
+    env: buildServerEnv(port, cacheDir, bundledNodeModules),
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -235,6 +292,29 @@ async function startEmbeddedServer() {
 
   await waitForServerReady(origin, 45000, () => recentServerLogs.join("\n"));
   return origin;
+}
+
+async function startEmbeddedServer() {
+  const devUrl = !app.isPackaged ? process.env.ELECTRON_DEV_URL?.trim() : "";
+  if (devUrl) {
+    serverOrigin = devUrl.replace(/\/+$/, "");
+    return serverOrigin;
+  }
+
+  const runtime = resolveStandaloneRuntime();
+  try {
+    return await launchServerInstance(runtime);
+  } catch (err) {
+    if (!runtime.isHotPatch) throw err;
+    // Crash-loop guard: roll back broken hot patch to bundled standalone automatically
+    stopEmbeddedServer();
+    try {
+      fs.rmSync(getHotStandaloneDir(), { recursive: true, force: true });
+    } catch {
+      // ignore cleanup failures
+    }
+    return launchServerInstance(resolveStandaloneRuntime());
+  }
 }
 
 function stopEmbeddedServer() {
@@ -460,6 +540,9 @@ if (!gotSingleInstanceLock) {
       shell,
       stopServer: stopEmbeddedServer,
       getMainWindow: () => mainWindow,
+      getBundledStandaloneDir,
+      getHotStandaloneDir,
+      getActiveVersion: () => resolveStandaloneRuntime().activeVersion,
     });
     registerUpdaterIpcHandlers();
     buildAppMenu();

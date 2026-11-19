@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { copyStandaloneBundle, toWinFsPath } = require("./copy-standalone.cjs");
+const { computeStandaloneCompatibilityMeta } = require("./standalone-meta.cjs");
 
 const ROOT = process.cwd();
 const STANDALONE_SRC = path.join(ROOT, ".next", "standalone");
@@ -38,6 +39,12 @@ try {
         dereference: true,
       });
     }
+
+    const compatMeta = computeStandaloneCompatibilityMeta(ROOT);
+    fs.writeFileSync(
+      toWinFsPath(path.join(OUT_DIR, "standalone-meta.json")),
+      JSON.stringify(compatMeta, null, 2)
+    );
 
     if (!fs.existsSync(path.join(OUT_DIR, "server.js"))) {
       throw new Error(`[prepare-electron-standalone] Staged bundle missing server.js in ${OUT_DIR}`);

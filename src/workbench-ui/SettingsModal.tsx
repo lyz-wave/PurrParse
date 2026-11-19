@@ -762,11 +762,13 @@ export function SettingsModal({
                       onClick={() => onInstallUpdate?.()}
                       className="prism-on-dark font-mono text-[11px] px-3.5 py-1.5 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer transition-colors"
                     >
-                      {updateState.installMode === "self-replace"
-                        ? "重启并安装更新"
-                        : updateState.assetName?.endsWith(".dmg")
-                          ? "打开 DMG 安装包"
-                          : "运行安装程序并重启"}
+                      {updateState.installMode === "hot-patch"
+                        ? "重启并应用增量补丁"
+                        : updateState.installMode === "self-replace"
+                          ? "重启并安装更新"
+                          : updateState.assetName?.endsWith(".dmg")
+                            ? "打开 DMG 安装包"
+                            : "运行安装程序并重启"}
                     </button>
                   )}
                 </div>
@@ -851,10 +853,12 @@ export function SettingsModal({
               <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[11px] text-slate-500">
                 <span>
                   {updateState.assetName
-                    ? `匹配安装包：${updateState.assetName}${
+                    ? `${
+                        updateState.installMode === "hot-patch" ? "轻量增量补丁" : "匹配安装包"
+                      }：${updateState.assetName}${
                         updateState.assetSize ? ` (${formatBytes(updateState.assetSize)})` : ""
                       }`
-                    : "支持 macOS (.dmg) 与 Windows (NSIS .exe) 增量检测"}
+                    : "支持增量业务补丁与 macOS / Windows 整包自动回退"}
                 </span>
                 <button
                   type="button"

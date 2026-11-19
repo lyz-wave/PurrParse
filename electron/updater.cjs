@@ -1,7 +1,10 @@
-const { spawn } = require("node:child_process");
+const { execFileSync, spawn } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+
+const PATCH_MANIFEST_FILENAME = "PurrParse-patch-manifest.json";
 
 const APP_GITHUB_REPO = "lyz-wave/PurrParse";
 const APP_RELEASES_PAGE_URL = `https://github.com/${APP_GITHUB_REPO}/releases`;
@@ -140,6 +143,54 @@ function isTrustedExternalUrl(url) {
   return typeof url === "string" && TRUSTED_EXTERNAL_PREFIXES.some((prefix) => url.startsWith(prefix));
 }
 
+function isPatchManifestCompatible(localMeta, manifest, latestVersion) {
+  if (!localMeta || !manifest || typeof manifest !== "object") return false;
+  const targetVer = normalizeVersion(manifest.version);
+  const expectedVer = normalizeVersion(latestVersion);
+  if (!targetVer || !expectedVer || targetVer !== expectedVer) return false;
+  if (!manifest.patchAsset || typeof manifest.patchAsset !== "string") return false;
+  if (!manifest.patchSha256 || typeof manifest.patchSha256 !== "string") return false;
+  if (!localMeta.shellHash || !localMeta.depsHash) return false;
+  return (
+    localMeta.shellHash === manifest.shellHash &&
+    localMeta.depsHash === manifest.depsHash
+  );
+}
+
+async function tryFetchPatchManifest(assets, tagName, currentVersion, timeoutMs = 4500) {
+  let manifestUrl = null;
+  if (Array.isArray(assets) && assets.length > 0) {
+    const matched = assets.find(
+      (item) => item && item.name && item.name.toLowerCase() === PATCH_MANIFEST_FILENAME.toLowerCase()
+    );
+    if (matched && matched.browser_download_url) {
+      manifestUrl = matched.browser_download_url;
+    }
+  }
+  if (!manifestUrl && tagName) {
+    manifestUrl = `${APP_RELEASES_PAGE_URL}/download/${encodeURIComponent(tagName)}/${PATCH_MANIFEST_FILENAME}`;
+  }
+  if (!manifestUrl || !isTrustedDownloadUrl(manifestUrl)) return null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(manifestUrl, {
+      method: "GET",
+      redirect: "follow",
+      headers: { "User-Agent": `PurrParse/${currentVersion}` },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    if (res.url && !isTrustedDownloadUrl(res.url)) return null;
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function buildDirectAssetFallbackUrl(tagName, platform, arch) {
   const expected = buildExpectedAssetName(tagName, platform, arch);
   if (!expected) {
@@ -152,7 +203,7 @@ function buildDirectAssetFallbackUrl(tagName, platform, arch) {
 }
 
 async function fetchLatestReleaseInfo(currentVersion, platform, arch, timeoutMs = 8000) {
-  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.6";
+  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.7";
 
   // Tier 1: GitHub REST API
   try {
@@ -194,6 +245,7 @@ async function fetchLatestReleaseInfo(currentVersion, platform, arch, timeoutMs 
             downloadUrl: matchedAsset?.browser_download_url || fallbackAsset.downloadUrl,
             assetSize: typeof matchedAsset?.size === "number" ? matchedAsset.size : null,
             source: "github-api",
+            _assets: Array.isArray(data.assets) ? data.assets : [],
           };
         }
       }
@@ -299,11 +351,32 @@ function sanitizeAssetFilename(rawName) {
   return path.basename(String(rawName || "PurrParse-Update")).replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-function createDesktopUpdater({ app, shell, stopServer, getMainWindow }) {
-  const currentVersion = normalizeVersion(app.getVersion() || "1.1.6");
+function createDesktopUpdater({
+  app,
+  shell,
+  stopServer,
+  getMainWindow,
+  getBundledStandaloneDir,
+  getHotStandaloneDir,
+  getActiveVersion,
+}) {
+  const currentVersion = normalizeVersion(
+    (typeof getActiveVersion === "function" ? getActiveVersion() : "") || app.getVersion() || "1.1.7"
+  );
   const capabilities = detectInstallCapabilities(app);
   const platform = process.platform;
   const arch = process.arch === "arm64" ? "arm64" : process.arch === "x64" ? "x64" : "unknown";
+
+  function readBundledMeta() {
+    try {
+      if (typeof getBundledStandaloneDir !== "function") return null;
+      const metaPath = path.join(getBundledStandaloneDir(), "standalone-meta.json");
+      if (!fs.existsSync(metaPath)) return null;
+      return JSON.parse(fs.readFileSync(metaPath, "utf8"));
+    } catch {
+      return null;
+    }
+  }
 
   let downloadAbortController = null;
   let state = {
@@ -317,6 +390,8 @@ function createDesktopUpdater({ app, shell, stopServer, getMainWindow }) {
     assetName: null,
     downloadUrl: null,
     assetSize: null,
+    patchSha256: null,
+    updateChannel: null,
     progressPercent: 0,
     transferredBytes: 0,
     totalBytes: 0,
@@ -327,6 +402,7 @@ function createDesktopUpdater({ app, shell, stopServer, getMainWindow }) {
     checkedAt: null,
     error: null,
     source: null,
+    _assets: [],
   };
 
   function getUpdatesDir() {
@@ -364,23 +440,69 @@ function createDesktopUpdater({ app, shell, stopServer, getMainWindow }) {
 
     try {
       const info = await fetchLatestReleaseInfo(currentVersion, platform, arch);
+      let assetName = info.assetName;
+      let downloadUrl = info.downloadUrl;
+      let assetSize = info.assetSize;
+      let patchSha256 = null;
+      let installMode = capabilities.installMode;
+      let updateChannel = "full";
+
+      const localMeta = readBundledMeta();
+      if (info.hasUpdate && localMeta && typeof getHotStandaloneDir === "function") {
+        const manifest = await tryFetchPatchManifest(
+          info._assets || [],
+          info.tagName,
+          currentVersion
+        );
+        if (isPatchManifestCompatible(localMeta, manifest, info.latestVersion)) {
+          const patchAssetMeta = Array.isArray(info._assets)
+            ? info._assets.find(
+                (item) => item && item.name && item.name.toLowerCase() === manifest.patchAsset.toLowerCase()
+              )
+            : null;
+          const resolvedPatchUrl =
+            (patchAssetMeta && patchAssetMeta.browser_download_url) ||
+            `${APP_RELEASES_PAGE_URL}/download/${encodeURIComponent(info.tagName)}/${encodeURIComponent(manifest.patchAsset)}`;
+          if (isTrustedDownloadUrl(resolvedPatchUrl)) {
+            assetName = manifest.patchAsset;
+            downloadUrl = resolvedPatchUrl;
+            assetSize =
+              typeof manifest.patchSize === "number"
+                ? manifest.patchSize
+                : patchAssetMeta && typeof patchAssetMeta.size === "number"
+                  ? patchAssetMeta.size
+                  : null;
+            patchSha256 = manifest.patchSha256;
+            installMode = "hot-patch";
+            updateChannel = "patch";
+          }
+        }
+      }
+
       let existingDownloadPath = null;
       let nextStatus = info.hasUpdate ? "available" : "up-to-date";
       let transferredBytes = 0;
-      let totalBytes = info.assetSize || 0;
+      let totalBytes = assetSize || 0;
       let progressPercent = 0;
 
-      if (info.hasUpdate && info.assetName && info.assetSize && info.assetSize > 0) {
-        const safeName = sanitizeAssetFilename(info.assetName);
+      if (info.hasUpdate && assetName && assetSize && assetSize > 0) {
+        const safeName = sanitizeAssetFilename(assetName);
         const candidate = path.join(getUpdatesDir(), safeName);
         try {
           const stat = fs.statSync(candidate);
-          if (stat.isFile() && stat.size === info.assetSize) {
-            existingDownloadPath = candidate;
-            nextStatus = "downloaded";
-            transferredBytes = stat.size;
-            totalBytes = stat.size;
-            progressPercent = 100;
+          if (stat.isFile() && stat.size === assetSize) {
+            let hashOk = true;
+            if (patchSha256) {
+              const actualHash = crypto.createHash("sha256").update(fs.readFileSync(candidate)).digest("hex");
+              hashOk = actualHash.toLowerCase() === patchSha256.toLowerCase();
+            }
+            if (hashOk) {
+              existingDownloadPath = candidate;
+              nextStatus = "downloaded";
+              transferredBytes = stat.size;
+              totalBytes = stat.size;
+              progressPercent = 100;
+            }
           }
         } catch {
           // Not yet downloaded
@@ -395,9 +517,12 @@ function createDesktopUpdater({ app, shell, stopServer, getMainWindow }) {
         releaseNotes: info.releaseNotes,
         releaseUrl: info.releaseUrl,
         publishedAt: info.publishedAt,
-        assetName: info.assetName,
-        downloadUrl: info.downloadUrl,
-        assetSize: info.assetSize,
+        assetName,
+        downloadUrl,
+        assetSize,
+        patchSha256,
+        updateChannel,
+        installMode,
         downloadedFilePath: existingDownloadPath,
         transferredBytes,
         totalBytes,
@@ -535,6 +660,13 @@ function createDesktopUpdater({ app, shell, stopServer, getMainWindow }) {
         throw new Error("下载文件为空，请重试。");
       }
 
+      if (state.patchSha256) {
+        const actualHash = crypto.createHash("sha256").update(fs.readFileSync(partPath)).digest("hex");
+        if (actualHash.toLowerCase() !== state.patchSha256.toLowerCase()) {
+          throw new Error("增量补丁 SHA-256 校验失败，已拒绝安装，请重试。");
+        }
+      }
+
       fs.renameSync(partPath, targetPath);
 
       // Cleanup stale installers in updates dir
@@ -630,6 +762,69 @@ function createDesktopUpdater({ app, shell, stopServer, getMainWindow }) {
         status: "error",
         error: "安装包文件不存在，请重新下载。",
       });
+    }
+
+    if (
+      state.installMode === "hot-patch" &&
+      typeof getHotStandaloneDir === "function" &&
+      typeof getBundledStandaloneDir === "function"
+    ) {
+      patchState({ status: "installing", error: null });
+      const hotDir = getHotStandaloneDir();
+      const stagingDir = `${hotDir}.staging-${Date.now()}`;
+      const backupDir = `${hotDir}.backup-${Date.now()}`;
+      try {
+        fs.rmSync(stagingDir, { recursive: true, force: true });
+        fs.mkdirSync(stagingDir, { recursive: true });
+        execFileSync("tar", ["-xzf", filePath, "-C", stagingDir], { windowsHide: true });
+
+        if (
+          !fs.existsSync(path.join(stagingDir, "server.js")) ||
+          !fs.existsSync(path.join(stagingDir, ".next", "BUILD_ID"))
+        ) {
+          throw new Error("增量补丁内容不完整（缺少 server.js 或 BUILD_ID）");
+        }
+
+        const bundledNodeModules = path.join(getBundledStandaloneDir(), "node_modules");
+        const stagedNodeModules = path.join(stagingDir, "node_modules");
+        if (fs.existsSync(bundledNodeModules) && !fs.existsSync(stagedNodeModules)) {
+          fs.symlinkSync(
+            bundledNodeModules,
+            stagedNodeModules,
+            process.platform === "win32" ? "junction" : "dir"
+          );
+        }
+
+        if (fs.existsSync(hotDir)) {
+          fs.renameSync(hotDir, backupDir);
+        }
+        fs.renameSync(stagingDir, hotDir);
+        try {
+          fs.rmSync(backupDir, { recursive: true, force: true });
+        } catch {
+          // ignore backup cleanup
+        }
+
+        setTimeout(() => {
+          stopServer();
+          app.relaunch();
+          app.exit(0);
+        }, 250);
+        return getState();
+      } catch (err) {
+        try {
+          fs.rmSync(stagingDir, { recursive: true, force: true });
+          if (!fs.existsSync(hotDir) && fs.existsSync(backupDir)) {
+            fs.renameSync(backupDir, hotDir);
+          }
+        } catch {
+          // ignore rollback errors
+        }
+        return patchState({
+          status: "error",
+          error: `应用增量补丁失败：${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
     }
 
     if (platform === "win32") {
@@ -750,4 +945,5 @@ module.exports = {
   normalizeVersion,
   compareSemver,
   selectPlatformAsset,
+  isPatchManifestCompatible,
 };
