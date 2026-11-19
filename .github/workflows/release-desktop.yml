@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.7)"
+        description: "Release tag name (e.g. v1.1.8)"
         required: true
-        default: "v1.1.7"
+        default: "v1.1.8"
 
 permissions:
   contents: write
@@ -39,6 +39,13 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           cat <<'EOF' > /tmp/release-notes.md
+          ### v1.1.8 主要更新
+
+          - **修复大批量段落偶发漏译（自动拆半重试）**：当并发解析中单个批次（如 8 段）偶发限流/超时/校验异常时，[chunk-orchestrator.ts](src/core/engine/chunk-orchestrator.ts) 自动退避并将该批拆分为两小批逐个重试，避免直接丢弃整批译文。
+          - **恢复并打包跨平台「视频转逐字稿正文」(`v2t.py`) + 解除 5 分钟服务端超时**：
+            - 将 `scripts/v2t.py` 直接随包内置入 `standalone/scripts/`（后续增量热更新也可同步升级）并支持 macOS + Windows Python 环境探测与 UTF-8 编码。
+            - 修复此前超过 5~6 分钟的长视频本地 ASR 转写（如 ~60 分钟抖音播客）因 Node 22 默认 `requestTimeout=300s` 及 6 分钟桥接超时导致中断、随后静默回退“未公开字幕”提示的问题；现已解除嵌入式 Next.js 服务端请求超时、将 `v2t` 超时放宽至 25 分钟、在预处理阶段推送心跳进度并保留完整异常日志。
+
           ### v1.1.7 主要更新
 
           - **双轨增量补丁更新（~3–5 MB 秒级热切换）**：每次发版同步产出轻量 `PurrParse-patch-<version>.tar.gz` 与 `PurrParse-patch-manifest.json`（含 `shellHash` / `depsHash` 指纹与 SHA-256 校验）。从 `v1.1.7` 起，纯业务层（前端 UI、Prompt、模型适配器、API）更新只需下载几 MB 增量补丁解压到 `userData/hot-standalone` 并自动重启，不再破坏 macOS 签名；当 Electron 壳或依赖树变更时自动安全回退全量安装包，且内置启动崩溃自动回滚保护。

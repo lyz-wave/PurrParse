@@ -203,7 +203,7 @@ function buildDirectAssetFallbackUrl(tagName, platform, arch) {
 }
 
 async function fetchLatestReleaseInfo(currentVersion, platform, arch, timeoutMs = 8000) {
-  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.7";
+  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.8";
 
   // Tier 1: GitHub REST API
   try {
@@ -361,7 +361,7 @@ function createDesktopUpdater({
   getActiveVersion,
 }) {
   const currentVersion = normalizeVersion(
-    (typeof getActiveVersion === "function" ? getActiveVersion() : "") || app.getVersion() || "1.1.7"
+    (typeof getActiveVersion === "function" ? getActiveVersion() : "") || app.getVersion() || "1.1.8"
   );
   const capabilities = detectInstallCapabilities(app);
   const platform = process.platform;

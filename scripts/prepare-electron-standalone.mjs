@@ -40,6 +40,13 @@ try {
       });
     }
 
+    const v2tSrc = path.join(ROOT, "scripts", "v2t.py");
+    if (fs.existsSync(v2tSrc)) {
+      const v2tDestDir = path.join(OUT_DIR, "scripts");
+      fs.mkdirSync(toWinFsPath(v2tDestDir), { recursive: true });
+      fs.copyFileSync(toWinFsPath(v2tSrc), toWinFsPath(path.join(v2tDestDir, "v2t.py")));
+    }
+
     const compatMeta = computeStandaloneCompatibilityMeta(ROOT);
     fs.writeFileSync(
       toWinFsPath(path.join(OUT_DIR, "standalone-meta.json")),

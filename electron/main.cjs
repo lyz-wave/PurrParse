@@ -277,7 +277,12 @@ async function launchServerInstance(runtime) {
     }
   };
 
-  serverProcess = spawn(process.execPath, [serverEntry], {
+  const launcherCode =
+    "const http=require('node:http');const orig=http.createServer;" +
+    "http.createServer=function(...a){const s=orig.apply(this,a);s.requestTimeout=0;s.keepAliveTimeout=600000;return s;};" +
+    "require(process.argv[1]);";
+
+  serverProcess = spawn(process.execPath, ["-e", launcherCode, serverEntry], {
     cwd: standaloneDir,
     windowsHide: true,
     env: buildServerEnv(port, cacheDir, bundledNodeModules),

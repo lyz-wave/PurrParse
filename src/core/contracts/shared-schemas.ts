@@ -191,8 +191,11 @@ export const TopModelBaseSchema = z.object({
 export const AnnotatedUnitBaseSchema = z.object({
   unitId: z.string(),
   weight: UnitWeightSchema,
-  tldr: z.string(),
-  secondaryBlockText: z.string(),
+  tldr: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? ""),
+  secondaryBlockText: z.string().min(1),
   tensorOrStateFlow: optString,
   highlights: z.array(HighlightSpanSchema).catch([]),
   notes: z

@@ -29,20 +29,54 @@ export interface V2tTranscriptResult {
 }
 
 function resolveV2tScriptPath(): string {
+  const candidates: string[] = [];
   if (process.env.V2T_SCRIPT_PATH?.trim()) {
-    return process.env.V2T_SCRIPT_PATH.trim();
+    candidates.push(process.env.V2T_SCRIPT_PATH.trim());
   }
-  return path.join(os.homedir(), ".agents", "skills", "video-to-text", "scripts", "v2t.py");
+  // 1) Bundled inside standalone / hot-standalone or repo scripts/
+  candidates.push(path.join(process.cwd(), "scripts", "v2t.py"));
+  const resPath = (process as { resourcesPath?: string }).resourcesPath;
+  if (resPath) {
+    candidates.push(path.join(resPath, "standalone", "scripts", "v2t.py"));
+    candidates.push(path.join(resPath, "v2t", "v2t.py"));
+  }
+  // 2) User skill path fallback
+  candidates.push(path.join(os.homedir(), ".agents", "skills", "video-to-text", "scripts", "v2t.py"));
+
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return candidates[candidates.length - 1];
 }
 
 function resolvePythonBinary(): string {
-  const candidates = ["/opt/miniconda3/bin/python3", "/usr/local/bin/python3", "python3"];
+  const home = os.homedir();
+  const candidates =
+    process.platform === "win32"
+      ? [
+          path.join(home, "miniconda3", "python.exe"),
+          path.join(home, "anaconda3", "python.exe"),
+          path.join(process.env.LOCALAPPDATA || "", "Programs", "Python", "Python312", "python.exe"),
+          path.join(process.env.LOCALAPPDATA || "", "Programs", "Python", "Python311", "python.exe"),
+          "python",
+        ]
+      : [
+          "/opt/miniconda3/bin/python3",
+          "/opt/homebrew/bin/python3",
+          path.join(home, "miniconda3", "bin", "python3"),
+          path.join(home, "anaconda3", "bin", "python3"),
+          "/usr/local/bin/python3",
+          "python3",
+        ];
   for (const bin of candidates) {
-    if (bin === "python3" || fs.existsSync(bin)) {
+    if (!bin) continue;
+    if (bin === "python3" || bin === "python" || fs.existsSync(bin)) {
       return bin;
     }
   }
-  return "python3";
+  return process.platform === "win32" ? "python" : "python3";
 }
 
 export function isV2tAvailable(): boolean {
@@ -200,17 +234,46 @@ export async function runVideoToTextBridge(
   fs.mkdirSync(workDir, { recursive: true });
   const pythonBin = resolvePythonBinary();
   const homeBin = path.join(os.homedir(), ".local", "bin");
-  const augmentedPath = `${homeBin}:/opt/miniconda3/bin:/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ""}`;
+  const augmentedPath =
+    process.platform === "win32"
+      ? `${homeBin};${process.env.PATH ?? ""}`
+      : `${homeBin}:/opt/miniconda3/bin:/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ""}`;
 
-  await execFileAsync(
-    pythonBin,
-    [scriptPath, "run", url, "-o", outMdPath, "--workdir", workDir, "--lang", lang],
-    {
-      timeout: 6 * 60 * 1000,
-      maxBuffer: 12 * 1024 * 1024,
-      env: { ...process.env, PATH: augmentedPath },
+  try {
+    await execFileAsync(
+      pythonBin,
+      [scriptPath, "run", url, "-o", outMdPath, "--workdir", workDir, "--lang", lang],
+      {
+        timeout: 25 * 60 * 1000,
+        maxBuffer: 16 * 1024 * 1024,
+        env: {
+          ...process.env,
+          PATH: augmentedPath,
+          PYTHONUTF8: "1",
+          PYTHONIOENCODING: "utf-8",
+        },
+      }
+    );
+  } catch (err) {
+    const stderr =
+      typeof (err as { stderr?: unknown })?.stderr === "string"
+        ? (err as { stderr: string }).stderr.trim().slice(-500)
+        : "";
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[v2t] bridge execution failed", {
+      scriptPath,
+      pythonBin,
+      cacheKey: safeKey,
+      message: msg,
+      stderr: stderr || undefined,
+    });
+    // Check whether ASR completed just before timeout/kill and wrote valid transcript.json
+    const recoveredAfterErr = readCached();
+    if (recoveredAfterErr) {
+      return recoveredAfterErr;
     }
-  );
+    throw new Error(stderr ? `${msg} (${stderr.split(/\r?\n/).pop() || ""})` : msg);
+  }
 
   return readCached();
 }

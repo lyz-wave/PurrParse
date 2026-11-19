@@ -29,6 +29,9 @@ const entries = ["server.js", ".next", "standalone-meta.json"];
 if (fs.existsSync(path.join(STANDALONE_DIR, "public"))) {
   entries.push("public");
 }
+if (fs.existsSync(path.join(STANDALONE_DIR, "scripts"))) {
+  entries.push("scripts");
+}
 
 execFileSync("tar", ["-czf", patchPath, "-C", STANDALONE_DIR, ...entries], {
   stdio: "inherit",

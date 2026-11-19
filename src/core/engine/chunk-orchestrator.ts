@@ -114,6 +114,36 @@ function throwIfAborted(signal?: AbortSignal) {
   }
 }
 
+function waitWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    const err = new Error("分析任务已取消");
+    err.name = "AbortError";
+    return Promise.reject(err);
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      cleanup();
+      const err = new Error("分析任务已取消");
+      err.name = "AbortError";
+      reject(err);
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function isNonRetryableAuthOrQuotaError(err: unknown): boolean {
+  const status = (err as { statusCode?: unknown })?.statusCode;
+  return status === 401 || status === 402 || status === 403 || status === 404;
+}
+
 function appendPromptModeHint(
   prompt: string,
   stage: "top-model" | "batch" | "bottom",
@@ -216,7 +246,31 @@ export async function* runChunkedAnalysis(
     progress: 8,
   };
 
-  const sourceUnits = await plugin.preprocessSource(payload);
+  let preprocessDone = false;
+  const preprocessPromise = plugin.preprocessSource(payload).finally(() => {
+    preprocessDone = true;
+  });
+  let tick = 0;
+  while (!preprocessDone) {
+    await Promise.race([
+      preprocessPromise.then(
+        () => undefined,
+        () => undefined
+      ),
+      new Promise<void>((resolve) => setTimeout(resolve, 15000)),
+    ]);
+    throwIfAborted(options.abortSignal);
+    if (!preprocessDone) {
+      tick += 1;
+      yield {
+        type: "status",
+        phase: "ingesting",
+        message: `[SEAM 01] 正在拉取/转写输入源（已等待 ${tick * 15}s）...`,
+        progress: Math.min(16, 8 + tick),
+      };
+    }
+  }
+  const sourceUnits = await preprocessPromise;
   throwIfAborted(options.abortSignal);
 
   if (sourceUnits.length === 0) {
@@ -380,6 +434,132 @@ export async function* runChunkedAnalysis(
   const computePoolProgress = () =>
     26 + Math.min(68, Math.round(((completedBatches + (completedBottom ? 1 : 0)) / totalWorkUnits) * 68));
 
+  const hydrateBatchDirect = async (
+    targetBatch: SourceUnit[],
+    batchLabel: string
+  ): Promise<WorkbenchUnit[]> => {
+    const batchResult = await generator.generate({
+      prompt: appendPromptModeHint(
+        plugin.buildPrompts.batchUnitsPrompt(
+          targetBatch,
+          topOutput.globalContextSummary,
+          allSectionIds
+        ),
+        "batch",
+        speedMode
+      ),
+      schema: plugin.schemas.batchUnits,
+      schemaName: batchLabel,
+      abortSignal: options.abortSignal,
+      maxTokens: 8192,
+    });
+
+    const batchMap = new Map<string, (typeof batchResult.units)[number]>();
+    for (const u of batchResult.units) {
+      if (u.unitId) batchMap.set(u.unitId, u);
+    }
+
+    return targetBatch.map((src, idx) => {
+      const matched =
+        batchMap.get(src.id) ?? batchMap.get(src.unitCode) ?? batchResult.units[idx];
+      if (!matched) {
+        return {
+          id: src.id,
+          unitCode: src.unitCode,
+          sectionId: src.sectionId,
+          sectionTitle: src.sectionTitle,
+          sectionTask: src.sectionTask,
+          weight: "support",
+          tldr: `${src.sectionTitle} (${src.unitCode})`,
+          primaryKind: src.primaryKind,
+          codeLanguage: src.codeLanguage,
+          filePath: src.metadata?.filePath,
+          primaryText: src.rawPrimaryText,
+          highlights: [],
+          secondaryBlockText: "该批次未返回对应译文/状态追踪，可点击重新生成或手动补充笔记。",
+          notes: [],
+        };
+      }
+      return plugin.hydrateUnit(src, matched);
+    });
+  };
+
+  const hydrateBatchWithRetry = async (
+    targetBatch: SourceUnit[],
+    batchNum: number
+  ): Promise<{ units: WorkbenchUnit[]; anyFailed: boolean; err?: unknown }> => {
+    const baseLabel = `${plugin.id}_batch_${batchNum}`;
+    try {
+      return { units: await hydrateBatchDirect(targetBatch, baseLabel), anyFailed: false };
+    } catch (err) {
+      if (
+        options.abortSignal?.aborted ||
+        (err instanceof Error && err.name === "AbortError") ||
+        isNonRetryableAuthOrQuotaError(err)
+      ) {
+        throw err;
+      }
+
+      await waitWithAbort(1200, options.abortSignal);
+      if (targetBatch.length >= 4) {
+        const mid = Math.ceil(targetBatch.length / 2);
+        const halves = [targetBatch.slice(0, mid), targetBatch.slice(mid)];
+        const combined: WorkbenchUnit[] = [];
+        let halfFailed = false;
+        let lastHalfErr: unknown = err;
+
+        for (let hIdx = 0; hIdx < halves.length; hIdx++) {
+          const half = halves[hIdx];
+          try {
+            combined.push(
+              ...(await hydrateBatchDirect(half, `${baseLabel}_part${hIdx + 1}`))
+            );
+          } catch (halfErr) {
+            if (
+              options.abortSignal?.aborted ||
+              (halfErr instanceof Error && halfErr.name === "AbortError")
+            ) {
+              throw halfErr;
+            }
+            halfFailed = true;
+            lastHalfErr = halfErr;
+            const reason =
+              halfErr instanceof Error && halfErr.message
+                ? halfErr.message.slice(0, 60)
+                : "请求超时或异常";
+            for (const src of half) {
+              const base = baselineById.get(src.id)!;
+              combined.push({
+                ...base,
+                secondaryBlockText: `该批次翻译生成失败（${reason}），已保留原文与基础结构（可稍后重试该篇）。`,
+              });
+            }
+          }
+        }
+        return {
+          units: combined,
+          anyFailed: halfFailed,
+          err: halfFailed ? lastHalfErr : undefined,
+        };
+      }
+
+      try {
+        return {
+          units: await hydrateBatchDirect(targetBatch, `${baseLabel}_retry`),
+          anyFailed: false,
+        };
+      } catch (retryErr) {
+        if (
+          options.abortSignal?.aborted ||
+          (retryErr instanceof Error && retryErr.name === "AbortError")
+        ) {
+          throw retryErr;
+        }
+        return { units: [], anyFailed: true, err: retryErr };
+      }
+    }
+  };
+
   const workers = Array.from({ length: activeWorkers }, async () => {
     while (true) {
       throwIfAborted(options.abortSignal);
@@ -389,47 +569,19 @@ export async function* runChunkedAnalysis(
 
       if (task.kind === "batch") {
         try {
-          const batchResult = await generator.generate({
-            prompt: appendPromptModeHint(
-              plugin.buildPrompts.batchUnitsPrompt(
-                task.batch,
-                topOutput.globalContextSummary,
-                allSectionIds
-              ),
-              "batch",
-              speedMode
-            ),
-            schema: plugin.schemas.batchUnits,
-            schemaName: `${plugin.id}_batch_${task.index + 1}`,
-            abortSignal: options.abortSignal,
-            maxTokens: 8192,
-          });
-
-          const batchMap = new Map(batchResult.units.map((u) => [u.unitId, u]));
-          const batchHydrated: WorkbenchUnit[] = task.batch.map((src, idx) => {
-            const matched = batchMap.get(src.id) ?? batchResult.units[idx];
-            if (!matched) {
-              return {
-                id: src.id,
-                unitCode: src.unitCode,
-                sectionId: src.sectionId,
-                sectionTitle: src.sectionTitle,
-                sectionTask: src.sectionTask,
-                weight: "support",
-                tldr: `${src.sectionTitle} (${src.unitCode})`,
-                primaryKind: src.primaryKind,
-                codeLanguage: src.codeLanguage,
-                filePath: src.metadata?.filePath,
-                primaryText: src.rawPrimaryText,
-                highlights: [],
-                secondaryBlockText: "该批次未返回对应译文/状态追踪，可点击重新生成或手动补充笔记。",
-                notes: [],
-              };
+          const outcome = await hydrateBatchWithRetry(task.batch, task.index + 1);
+          if (outcome.units.length === 0 && outcome.anyFailed) {
+            throw outcome.err;
+          }
+          if (outcome.anyFailed) {
+            failedBatchCount += 1;
+            if (!firstBatchError && outcome.err) firstBatchError = outcome.err;
+            if (failedBatchCount === batches.length) {
+              throw outcome.err ?? new Error("全部批次正文解析失败");
             }
-            return plugin.hydrateUnit(src, matched);
-          });
+          }
 
-          for (const u of batchHydrated) {
+          for (const u of outcome.units) {
             hydratedById.set(u.id, u);
           }
           liveDoc.units = sourceUnits.map(
@@ -442,7 +594,7 @@ export async function* runChunkedAnalysis(
             type: "unit-batch",
             batchIndex: completedBatches,
             totalBatches: batches.length,
-            units: batchHydrated,
+            units: outcome.units,
             partialDocument: { ...liveDoc, units: [...liveDoc.units] },
           });
           queue.push({
@@ -464,12 +616,13 @@ export async function* runChunkedAnalysis(
             throw err;
           }
 
-          // Graceful degradation for an isolated batch failure inside multi-batch runs
+          const shortReason =
+            err instanceof Error && err.message ? err.message.slice(0, 60) : "请求超时或异常";
           const fallbackUnits: WorkbenchUnit[] = task.batch.map((src) => {
             const base = baselineById.get(src.id)!;
             return {
               ...base,
-              secondaryBlockText: "该批次请求异常，已保留原文与基础结构（可稍后重试该篇）。",
+              secondaryBlockText: `该批次翻译生成失败（${shortReason}），已保留原文与基础结构（可稍后重试该篇）。`,
             };
           });
           for (const u of fallbackUnits) {

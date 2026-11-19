@@ -989,4 +989,81 @@ describe("LLM Adapter Gateway Normalization", () => {
     expect(seenPrompts[0]).toContain("sec-abstract");
     expect(seenPrompts[0]).toContain("sec-1");
   });
+
+  it("retries failed 8-unit batch by splitting into two 4-unit halves so no translations are lost", async () => {
+    const batchCalls: string[] = [];
+    const splitRecoveryGenerator: StructuredObjectGenerator = {
+      async generate<T>({
+        schemaName,
+        prompt,
+      }: {
+        schemaName: string;
+        prompt: string;
+      }): Promise<T> {
+        if (schemaName.includes("_batch_")) {
+          batchCalls.push(schemaName);
+          if (!schemaName.includes("_part")) {
+            throw new Error("transient batch timeout");
+          }
+          const ids = Array.from(prompt.matchAll(/unitId:\s*(\S+)/g)).map((m) => m[1]);
+          return {
+            units: ids.map((id) => ({
+              unitId: id,
+              weight: "core" as const,
+              tldr: `TLDR_${id}`,
+              secondaryBlockText: `已翻译_${id}`,
+              highlights: [],
+              notes: [{ body: `Note_${id}` }],
+            })),
+          } as T;
+        }
+        if (schemaName.endsWith("_top_mental_model")) {
+          return {
+            title: "Split Recovery Paper",
+            subtitle: "Sub",
+            badges: [],
+            globalContextSummary: "CTX",
+            topMentalModel: {
+              title: "00",
+              subtitle: "s",
+              cards: [{ tag: "T", body: "B" }],
+              diagram: { title: "D", hint: "H", nodes: [], edges: [] },
+              glossaryTitle: "G",
+              glossary: [],
+            },
+            sections: [{ id: "sec-1", navLabel: "1", title: "1. Experiments", taskBadge: "T" }],
+          } as T;
+        }
+        return {
+          bottomTitle: "08",
+          bottomBlocks: [{ type: "statement-banner", tag: "DONE", body: "Recovered" }],
+        } as T;
+      },
+    };
+
+    const eightParas = [
+      "4. Experiments",
+      ...Array.from(
+        { length: 8 },
+        (_, i) =>
+          `Experimental paragraph number ${i + 1} evaluates deep residual learning accuracy on ImageNet validation crops with standard scale augmentation, learning rate warmup schedules, bottleneck channel projections, and multi-crop evaluation across hundreds of convolutional layers.`
+      ),
+    ].join("\n\n");
+
+    let finalDoc: WorkbenchDocument | null = null;
+    for await (const ev of runChunkedAnalysis(
+      academicPaperPlugin,
+      { kind: "text", content: eightParas },
+      { generator: splitRecoveryGenerator, speedMode: "fast", batchSize: 8 }
+    )) {
+      if (ev.type === "complete") {
+        finalDoc = ev.document;
+      }
+    }
+
+    expect(batchCalls.some((c) => c.endsWith("_part1"))).toBe(true);
+    expect(batchCalls.some((c) => c.endsWith("_part2"))).toBe(true);
+    expect(finalDoc?.units).toHaveLength(8);
+    expect(finalDoc?.units.every((u) => u.secondaryBlockText.startsWith("已翻译_"))).toBe(true);
+  });
 });

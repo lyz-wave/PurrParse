@@ -1038,8 +1038,8 @@ async function fetchBilibiliContent(
                   parts.push(...v2tRes.sections);
                   usedV2t = true;
                 }
-              } catch {
-                // fall back to companion articles below
+              } catch (v2tErr) {
+                console.warn("[web-fetchers] bilibili v2t fallback failed:", v2tErr);
               }
             }
             if (!usedV2t && title) {
@@ -1579,6 +1579,7 @@ async function fetchDouyinContent(
 
   // 1. Try local video-to-text ASR skill first to capture real spoken audio transcript
   let v2tSections: string[] = [];
+  let v2tFailureReason = "";
   if (registeredVideoTranscriber) {
     try {
       const startSec = overviewSection ? 2 : 1;
@@ -1590,8 +1591,9 @@ async function fetchDouyinContent(
           title = v2tRes.title.slice(0, 88);
         }
       }
-    } catch {
-      // fall through to web transcript enrichment below
+    } catch (v2tErr) {
+      v2tFailureReason = v2tErr instanceof Error ? v2tErr.message : String(v2tErr);
+      console.warn("[web-fetchers] douyin v2t transcription failed:", v2tFailureReason);
     }
   }
 
@@ -1625,8 +1627,13 @@ async function fetchDouyinContent(
     parts.push(...formatEnrichedArticleSections(enrichedArticles, startSec));
   } else if (!fallbackBodySection) {
     const noticeSecIdx = parts.length + 1;
+    const reasonLine = v2tFailureReason
+      ? `\n\n本地音视频转写器状态：${v2tFailureReason.slice(0, 260)}`
+      : !registeredVideoTranscriber
+        ? "\n\n（当前运行环境未检测到本地音视频转写脚本 `v2t.py`。）"
+        : "";
     parts.push(
-      `# ${noticeSecIdx}. 视频口播实录获取说明（未公开字幕）\n该抖音作品为创作者原发视频，抖音网页端未公开字幕轨且音视频流受平台 Cookie 访问限制，全网亦未检索到对应的公开逐字文字稿。\n\n如需对完整口播内容进行逐段拆解，可将视频字幕（.srt / .vtt）或飞书妙记、通义听悟、剪映等工具转写的语音文字稿直接粘贴到「导入新源 -> 粘贴正文」中。`
+      `# ${noticeSecIdx}. 视频口播实录获取说明（未公开字幕）\n该抖音作品为创作者原发视频，抖音网页端未公开字幕轨且音视频流受平台 Cookie 访问限制，全网亦未检索到对应的公开逐字文字稿。${reasonLine}\n\n如需对完整口播内容进行逐段拆解，可将视频字幕（.srt / .vtt）或飞书妙记、通义听悟、剪映等工具转写的语音文字稿直接粘贴到「导入新源 -> 粘贴正文」中。`
     );
   }
 
