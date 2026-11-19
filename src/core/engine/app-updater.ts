@@ -2,7 +2,7 @@ export const APP_GITHUB_REPO = "lyz-wave/PurrParse";
 export const APP_RELEASES_PAGE_URL = `https://github.com/${APP_GITHUB_REPO}/releases`;
 export const APP_LATEST_RELEASE_URL = `${APP_RELEASES_PAGE_URL}/latest`;
 export const APP_DOWNLOAD_PAGE_URL = "https://purrparse.xyz";
-export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.1.5";
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.1.6";
 
 export type AppUpdateStatus =
   | "idle"
@@ -218,7 +218,7 @@ export function createInitialUpdateState(
 ): AppUpdateState {
   return {
     status: "idle",
-    currentVersion: normalizeVersion(currentVersion) || "1.1.5",
+    currentVersion: normalizeVersion(currentVersion) || "1.1.6",
     latestVersion: null,
     hasUpdate: false,
     releaseNotes: "",
@@ -289,7 +289,7 @@ export async function fetchLatestReleaseInfo({
   fetchImpl = fetch,
   timeoutMs = 8000,
 }: FetchLatestReleaseOptions): Promise<LatestReleaseResolution> {
-  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.5";
+  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.6";
 
   // Tier 1: GitHub REST API
   try {

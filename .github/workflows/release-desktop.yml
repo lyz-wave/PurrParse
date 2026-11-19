@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.5)"
+        description: "Release tag name (e.g. v1.1.6)"
         required: true
-        default: "v1.1.5"
+        default: "v1.1.6"
 
 permissions:
   contents: write
@@ -39,6 +39,13 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           cat <<'EOF' > /tmp/release-notes.md
+          ### v1.1.6 主要更新
+
+          - **修复极速模式 / 长文顶层脚手架截断报错 (`No object generated`)**：
+            - 将 `top-model` / `batch` / `bottom` 的极速与标准模式输出上限统一提升至 `8192` tokens，解除 4096 截断上限。
+            - 优化三模式 `topModelPrompt`，显式传入逻辑章节 `sectionId` 列表，避免模型将单个段落 `unitId`（如 `sec-1-p1`）误拆为十余个冗长章节。
+            - 新增结构化截断 JSON 自动修复器 `tryRepairTruncatedJson`，即使极端情况下仍触发 `max_tokens` 截断也能自动回退至完整闭合节点并校验入库。
+
           ### v1.1.5 主要更新
 
           - **OpenAI 兼容 / DeepSeek 中转流式优先引擎**：针对第三方中转站及推理模型在非流式（`stream: false`）长文本生成时容易超时或返回空 `choices: []` 的问题，所有 OpenAI 兼容 / DeepSeek / 自定义代理默认切换为流式 SSE（`stream: true`）并发出结构化 Schema 约束提示，彻底绕开中转站非流式缓冲超时并跳过冗余等待；流式转换器同时兼容心跳空帧、`reasoning_content` 推理段兜底提取、缺失 `index` 补全与空流诊断提示。

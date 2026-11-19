@@ -20,9 +20,19 @@ export function buildCognitiveTopModelPrompt(
   units: SourceUnit[],
   context?: PromptContext
 ): string {
+  const sectionList = Array.from(
+    units.reduce((acc, u) => {
+      if (!acc.has(u.sectionId)) acc.set(u.sectionId, u.sectionTitle);
+      return acc;
+    }, new Map<string, string>())
+  )
+    .slice(0, 16)
+    .map(([id, secTitle]) => `- ${id}: ${secTitle}`)
+    .join("\n");
+
   const digest = units
     .slice(0, 14)
-    .map((u) => `[${u.id} | ${u.sectionTitle}] ${u.rawPrimaryText.slice(0, 260)}`)
+    .map((u) => `[unitId=${u.id} | sectionId=${u.sectionId} | ${u.sectionTitle}] ${u.rawPrimaryText.slice(0, 260)}`)
     .join("\n");
 
   return [
@@ -38,7 +48,9 @@ export function buildCognitiveTopModelPrompt(
     "5. topMentalModel.comparisonPair: 对比 4 组 'Old Default OS' (leftTone='danger') vs 'Upgraded OS' (rightTone='success')。",
     "6. topMentalModel.diagram.nodes: 画出全文核心思想因果环，nodes 绑定 targetUnitId。",
     "7. topMentalModel.glossary: 提取 4 个核心心智模型，在 badge 中注明思想溯源。",
-    "8. sections: 按叙事弧线划分章节，并附带 `summary`（referenceRecall, established, openQuestions, rhetoricStrategy, reviewerCritique, socraticQuestions）。",
+    "8. sections: 仅按下方列出的 sectionId 划分章节（不要把具体段落 unitId 拆成独立 section），并附带凝练 `summary`（referenceRecall, established, openQuestions, rhetoricStrategy, reviewerCritique, socraticQuestions）。",
+    "\n可用章节 sectionId：",
+    sectionList,
     "\n思想单元摘要：",
     digest,
   ].join("\n");

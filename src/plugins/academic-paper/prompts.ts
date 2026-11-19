@@ -20,9 +20,19 @@ export function buildAcademicTopModelPrompt(
   units: SourceUnit[],
   context?: PromptContext
 ): string {
+  const sectionList = Array.from(
+    units.reduce((acc, u) => {
+      if (!acc.has(u.sectionId)) acc.set(u.sectionId, u.sectionTitle);
+      return acc;
+    }, new Map<string, string>())
+  )
+    .slice(0, 16)
+    .map(([id, secTitle]) => `- ${id}: ${secTitle}`)
+    .join("\n");
+
   const digest = units
     .slice(0, 14)
-    .map((u) => `[${u.id} | ${u.sectionTitle}] ${u.rawPrimaryText.slice(0, 280)}`)
+    .map((u) => `[unitId=${u.id} | sectionId=${u.sectionId} | ${u.sectionTitle}] ${u.rawPrimaryText.slice(0, 260)}`)
     .join("\n");
 
   return [
@@ -37,13 +47,15 @@ export function buildAcademicTopModelPrompt(
     "   - '[PROBLEM & GAP / 真问题与前人死结]'",
     "   - '[EUREKA INTUITION / 核心破局直觉]'",
     "   - '[FUNDAMENTAL TRADE-OFF / 核心交换代价]'",
-    "4. topMentalModel.diagram.nodes 中的每个节点尽量绑定 targetUnitId（取自下文 unit id）。",
+    "4. topMentalModel.diagram.nodes 中的每个节点尽量绑定 targetUnitId（取自下文 unitId）。",
     "5. topMentalModel.glossary 列出 4~6 个核心术语与数学符号的大白话直觉定义。",
     "6. topMentalModel.readingPath: 给出三遍阅读法（pass1Summary, pass2Summary, pass3Summary, recommendedUnitIds）。",
     "7. topMentalModel.fadedExamples: 针对论文最核心公式或机制构建 3 级渐隐手算/案例走查（level=1 完整极小数值推演；level=2 半填空；level=3 独立求解，标注 `[教学示例，非论文原始数据]`）。",
     "8. topMentalModel.designChoices: 列出 3~5 个关键设计决策与替代方案对比。",
     "9. topMentalModel.prerequisiteMap: 若读者提供了背景，列出 3~6 个前置知识速成；若未填写背景，禁止猜测读者水平，可简略列出通用领域概念。",
-    "10. sections 覆盖全部出现过的 sectionId，并在每一节尽量填写 `summary`（包含 established, openQuestions, rhetoricStrategy, referenceRecall, reviewerCritique, 及 2 道含 category[澄清概念/检查假设/追问证据/换个视角/推演后果/反问问题本身] 的 socraticQuestions）。",
+    "10. sections 必须仅按下方列出的逻辑章节 sectionId 归并输出（严禁把 sec-1-p1 / sec-1-p2 等具体段落 unitId 当作独立 section 展开），并在各章节填写凝练 summary（含 established, openQuestions, rhetoricStrategy, referenceRecall, reviewerCritique 与 1~2 道含 category[澄清概念/检查假设/追问证据/换个视角/推演后果/反问问题本身] 的 socraticQuestions）。",
+    "\n逻辑章节列表（仅输出这里的 sectionId 作为 sections[].id）：",
+    sectionList,
     "\n论文结构化片段摘要：",
     digest,
   ].join("\n");

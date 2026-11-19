@@ -843,6 +843,95 @@ function extractRawJsonCandidate(rawText: string): string {
   return candidate;
 }
 
+function extractJsonSliceForRepair(rawText: string): string {
+  const withoutThink = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const fencedClosed = withoutThink.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fencedClosed
+    ? fencedClosed[1].trim()
+    : withoutThink.replace(/^```(?:json)?\s*/i, "").trim();
+  const start = body.indexOf("{");
+  return start >= 0 ? body.slice(start) : body;
+}
+
+/**
+ * Repairs truncated JSON objects (e.g., when a response hits max_tokens mid-array/object)
+ * by rolling back to the latest complete object/array checkpoint and closing open containers.
+ */
+export function tryRepairTruncatedJson(rawText: string): unknown | null {
+  const exact = extractRawJsonCandidate(rawText);
+  try {
+    return JSON.parse(exact);
+  } catch {
+    // Fall through to checkpoint closure repair
+  }
+
+  const candidate = extractJsonSliceForRepair(rawText);
+  if (!candidate.startsWith("{")) return null;
+
+  const stack: Array<"{" | "["> = [];
+  let inString = false;
+  let escaped = false;
+  const checkpoints: Array<{ end: number; closers: string }> = [];
+
+  for (let i = 0; i < candidate.length; i++) {
+    const ch = candidate[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{" || ch === "[") {
+      stack.push(ch);
+    } else if (ch === "}" || ch === "]") {
+      if (stack.length > 0) stack.pop();
+      const closers = [...stack]
+        .reverse()
+        .map((c) => (c === "{" ? "}" : "]"))
+        .join("");
+      checkpoints.push({ end: i + 1, closers });
+    }
+  }
+
+  for (let k = checkpoints.length - 1; k >= Math.max(0, checkpoints.length - 16); k--) {
+    const cp = checkpoints[k];
+    const trimmedPrefix = candidate.slice(0, cp.end).replace(/,\s*$/, "");
+    try {
+      return JSON.parse(trimmedPrefix + cp.closers);
+    } catch {
+      // Keep scanning earlier complete checkpoints
+    }
+  }
+  return null;
+}
+
+function tryParseAndValidateCandidate<T>(
+  rawText: string,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>
+): T | null {
+  try {
+    const jsonStr = extractRawJsonCandidate(rawText);
+    const parsedJson = JSON.parse(jsonStr);
+    const validated = schema.safeParse(parsedJson);
+    if (validated.success) return validated.data;
+  } catch {
+    // Try structural truncation repair below
+  }
+
+  const repaired = tryRepairTruncatedJson(rawText);
+  if (repaired !== null) {
+    const validated = schema.safeParse(repaired);
+    if (validated.success) return validated.data;
+  }
+  return null;
+}
+
 function collectCandidateErrorTexts(err: unknown): string[] {
   if (!err || typeof err !== "object") return [];
   const rec = err as {
@@ -881,14 +970,8 @@ function tryRecoverFromErrorText<T>(
 ): T | null {
   const texts = collectCandidateErrorTexts(err);
   for (const rawText of texts) {
-    try {
-      const jsonStr = extractRawJsonCandidate(rawText);
-      const parsedJson = JSON.parse(jsonStr);
-      const validated = schema.safeParse(parsedJson);
-      if (validated.success) return validated.data;
-    } catch {
-      // Continue trying next candidate text
-    }
+    const recovered = tryParseAndValidateCandidate(rawText, schema);
+    if (recovered !== null) return recovered;
   }
   return null;
 }
@@ -930,9 +1013,12 @@ async function generateViaStreamText<T>(params: {
   });
 
   let collectedText = "";
+  let finishReason: string | undefined;
   for await (const part of result.fullStream) {
     if (part.type === "text-delta") {
       collectedText += part.textDelta;
+    } else if (part.type === "finish") {
+      finishReason = part.finishReason;
     } else if (part.type === "error") {
       const rawErr = part.error;
       if (rawErr instanceof Error) throw rawErr;
@@ -951,9 +1037,39 @@ async function generateViaStreamText<T>(params: {
     throw new Error("模型网关未返回任何有效文本内容（流式输出为空），请检查模型/中转配置后重试。");
   }
 
-  const jsonStr = extractRawJsonCandidate(collectedText);
-  const parsedJson = JSON.parse(jsonStr);
-  return schema.parse(parsedJson);
+  const parsedOrRepaired = tryParseAndValidateCandidate(collectedText, schema);
+  if (parsedOrRepaired !== null) {
+    if (finishReason === "length") {
+      console.warn("[llm-gateway] recovered truncated stream output cleanly", {
+        chars: collectedText.length,
+        maxTokens,
+      });
+    }
+    return parsedOrRepaired;
+  }
+
+  try {
+    const jsonStr = extractRawJsonCandidate(collectedText);
+    const parsedJson = JSON.parse(jsonStr);
+    return schema.parse(parsedJson);
+  } catch (parseErr) {
+    if (finishReason === "length") {
+      console.warn("[llm-gateway] stream hit maxTokens truncation", {
+        chars: collectedText.length,
+        maxTokens,
+      });
+    }
+    const baseMsg =
+      finishReason === "length"
+        ? `模型输出因达到长度上限（${maxTokens} tokens）被截断，无法解析完整 JSON`
+        : parseErr instanceof Error
+          ? parseErr.message
+          : "模型输出无法解析为合法 JSON";
+    const err = new SyntaxError(baseMsg) as SyntaxError & { text?: string; cause?: unknown };
+    err.text = collectedText;
+    err.cause = parseErr;
+    throw err;
+  }
 }
 
 export function resolveLanguageModel(config: LLMConfig): LanguageModelV1 {
@@ -1077,6 +1193,10 @@ export function createAiSdkObjectGenerator(config: LLMConfig): StructuredObjectG
                 mode: "json",
               });
               return result.object;
+            } catch (backupErr) {
+              const backupRecovered = tryRecoverFromErrorText(backupErr, schema);
+              if (backupRecovered !== null) return backupRecovered;
+              throw backupErr;
             } finally {
               cleanupObj();
             }

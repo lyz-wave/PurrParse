@@ -20,10 +20,20 @@ export function buildRepoTopModelPrompt(
   units: SourceUnit[],
   context?: PromptContext
 ): string {
+  const sectionList = Array.from(
+    units.reduce((acc, u) => {
+      if (!acc.has(u.sectionId)) acc.set(u.sectionId, u.sectionTitle);
+      return acc;
+    }, new Map<string, string>())
+  )
+    .slice(0, 16)
+    .map(([id, secTitle]) => `- ${id}: ${secTitle}`)
+    .join("\n");
+
   const outline = units
     .map(
       (u) =>
-        `[${u.id}] (${u.sectionTitle}) ${u.rawPrimaryText.slice(0, 260).replace(/\s+/g, " ")}`
+        `[unitId=${u.id} | sectionId=${u.sectionId}] (${u.sectionTitle}) ${u.rawPrimaryText.slice(0, 260).replace(/\s+/g, " ")}`
     )
     .join("\n");
 
@@ -42,7 +52,8 @@ ${formatRepoContext(context)}
 ${units.map((u) => `- ${u.id}: ${u.sectionTitle}`).join("\n")}
 5. topMentalModel.glossary 提炼 4-6 个底层工程术语及面试可复述的一句话解释。
 6. topMentalModel.designChoices 列出 3 个关键工程架构选型对比（如为什么用该数据结构/锁模型而不是替代方案）。
-7. sections 数组覆盖全部出现过的 sectionId，并在重点模块填写 summary（referenceRecall, established, openQuestions, rhetoricStrategy, reviewerCritique, socraticQuestions）。
+7. sections 仅按下方列出的模块 sectionId 归并输出，并在重点模块填写凝练 summary（referenceRecall, established, openQuestions, rhetoricStrategy, reviewerCritique, socraticQuestions）：
+${sectionList}
 
 源码片段摘要如下：
 ${outline}`;

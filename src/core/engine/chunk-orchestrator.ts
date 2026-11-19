@@ -121,8 +121,8 @@ function appendPromptModeHint(
 ): string {
   if (stage === "top-model") {
     return speedMode === "fast"
-      ? `${prompt}\n\n【极速精简模式】请大幅压缩单字段篇幅：卡片正文限 1 句，glossary 保留 3~4 条，fadedExamples 仅生成 level=1 的 1 个示例，designChoices 限 2~3 条，章节 summary 每项不超过 1 句话，确保极快输出完整 JSON。`
-      : `${prompt}\n\n【输出控制】请保持字段简洁凝练（卡片正文每条 1~2 句，章节 summary 每项 1~2 句，术语定义各 1 句），确保单轮完整输出合法 JSON 不截断。`;
+      ? `${prompt}\n\n【极速精简模式】请大幅压缩单字段篇幅：卡片正文限 1 句，glossary 保留 3~4 条，fadedExamples 仅生成 level=1 的 1 个示例，designChoices 限 2~3 条，sections 仅按大章节 sectionId 输出（严禁按段落 unitId 展开）且每节 summary 不超过 1 句话，确保极快输出完整 JSON。`
+      : `${prompt}\n\n【输出控制】请保持字段简洁凝练（卡片正文每条 1~2 句，sections 仅按大章节 sectionId 输出且每节 summary 限 1~2 句，术语定义各 1 句），确保单轮完整输出合法 JSON 不截断。`;
   }
   if (speedMode === "fast") {
     if (stage === "batch") {
@@ -323,7 +323,7 @@ export async function* runChunkedAnalysis(
     schema: plugin.schemas.topMentalModel,
     schemaName: `${plugin.id}_top_mental_model`,
     abortSignal: options.abortSignal,
-    maxTokens: speedMode === "fast" ? 4096 : 6144,
+    maxTokens: 8192,
   });
 
   throwIfAborted(options.abortSignal);
@@ -402,7 +402,7 @@ export async function* runChunkedAnalysis(
             schema: plugin.schemas.batchUnits,
             schemaName: `${plugin.id}_batch_${task.index + 1}`,
             abortSignal: options.abortSignal,
-            maxTokens: speedMode === "fast" ? 5120 : 8192,
+            maxTokens: 8192,
           });
 
           const batchMap = new Map(batchResult.units.map((u) => [u.unitId, u]));
@@ -504,7 +504,7 @@ export async function* runChunkedAnalysis(
           schema: plugin.schemas.bottomWorkbench,
           schemaName: `${plugin.id}_bottom_workbench`,
           abortSignal: options.abortSignal,
-          maxTokens: speedMode === "fast" ? 4096 : 6144,
+          maxTokens: 8192,
         });
 
         liveDoc.bottomTitle = bottomOutput.bottomTitle;

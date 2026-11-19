@@ -18,6 +18,7 @@ import { chunkArray, runChunkedAnalysis } from "./chunk-orchestrator";
 import {
   createAiSdkObjectGenerator,
   createNormalizingOpenAiFetch,
+  tryRepairTruncatedJson,
   type StructuredObjectGenerator,
 } from "./llm-adapters";
 import { PluginRegistry } from "../registry/plugin-registry";
@@ -874,5 +875,118 @@ describe("LLM Adapter Gateway Normalization", () => {
     });
     expect(result).toEqual({ ok: true, label: "backup" });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("repairs and recovers TopModel JSON truncated mid-section by max_tokens without failing", async () => {
+    const truncatedTopModelJson =
+      '{"title":"Deep Residual Learning","subtitle":"恒等捷径","globalContextSummary":"CTX","topMentalModel":{"title":"00","subtitle":"s","cards":[{"tag":"T","body":"B"}],"diagram":{"title":"D","hint":"H","nodes":[],"edges":[]},"glossaryTitle":"G","glossary":[]},"sections":[{"id":"sec-1","navLabel":"1","title":"1. Intro","taskBadge":"T","summary":{"established":"ok","openQuestions":"q","rhetoricStrategy":"r","referenceRecall":"ref","reviewerCritique":"rev","socraticQuestions":[]}},{"id":"sec-2","navLabel":"2","title":"2. Related","taskBadge":"T","summary":{"established":"partial","openQuestions":"q","rhetoricStrategy":"r","referenceRecall":"ref","reviewerCritique":"rev","socraticQuestions":[{"category":"澄清概念","question":"退化看训练误差还是测试误差？';
+
+    const directRepaired = tryRepairTruncatedJson(truncatedTopModelJson) as {
+      title?: string;
+      sections?: Array<{ id: string }>;
+    } | null;
+    expect(directRepaired?.title).toBe("Deep Residual Learning");
+    expect(directRepaired?.sections?.map((s) => s.id)).toEqual(["sec-1"]);
+
+    const fetchSpy = vi.fn(async () =>
+      new Response(
+        [
+          `data: ${JSON.stringify({
+            id: "trunc-1",
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: truncatedTopModelJson },
+                finish_reason: "length",
+              },
+            ],
+          })}`,
+          "data: [DONE]",
+        ].join("\n\n"),
+        { status: 200, headers: { "content-type": "text/event-stream" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "custom",
+      apiKey: "sk-test",
+      model: "deepseek-v4.1-flash-eco",
+      baseUrl: "https://relay.example.com/v1",
+    });
+
+    const recovered = await generator.generate({
+      schema: TopModelBaseSchema,
+      schemaName: "academic_top_mental_model",
+      prompt: "analyze paper",
+    });
+
+    expect(recovered.title).toBe("Deep Residual Learning");
+    expect(recovered.sections).toHaveLength(1);
+    expect(recovered.sections[0]?.id).toBe("sec-1");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("allocates full 8192 maxTokens and explicit sectionId list in fast mode to prevent truncation", async () => {
+    const seenMaxTokens: number[] = [];
+    const seenPrompts: string[] = [];
+    const probeGenerator: StructuredObjectGenerator = {
+      async generate<T>({
+        schemaName,
+        prompt,
+        maxTokens,
+      }: {
+        schemaName: string;
+        prompt: string;
+        maxTokens?: number;
+      }): Promise<T> {
+        seenMaxTokens.push(maxTokens ?? 0);
+        seenPrompts.push(prompt);
+        if (schemaName.includes("_batch_")) return { units: [] } as T;
+        if (schemaName.endsWith("_top_mental_model")) {
+          return {
+            title: "Doc",
+            subtitle: "Sub",
+            badges: [],
+            globalContextSummary: "CTX",
+            topMentalModel: {
+              title: "00",
+              subtitle: "s",
+              cards: [{ tag: "T", body: "B" }],
+              diagram: { title: "D", hint: "H", nodes: [], edges: [] },
+              glossaryTitle: "G",
+              glossary: [],
+            },
+            sections: [{ id: "sec-1", navLabel: "1", title: "1. Intro", taskBadge: "T" }],
+          } as T;
+        }
+        return {
+          bottomTitle: "08",
+          bottomBlocks: [{ type: "statement-banner", tag: "DONE", body: "Fast" }],
+        } as T;
+      },
+    };
+
+    const samplePaper = [
+      "Abstract",
+      "Deep neural networks for image recognition require residual learning to resolve optimization degradation cleanly across hundreds of layers without overfitting.",
+      "1. Introduction",
+      "First introductory paragraph detailing deep residual networks and identity mapping shortcuts across layers in modern convolutional architectures.",
+      "Second introductory paragraph analyzing degradation of training accuracy when plain networks grow deeper than standard baselines on ImageNet.",
+    ].join("\n\n");
+
+    const gen = runChunkedAnalysis(
+      academicPaperPlugin,
+      { kind: "text", content: samplePaper },
+      { generator: probeGenerator, speedMode: "fast" }
+    );
+    while (!(await gen.next()).done) {
+      // drain
+    }
+
+    expect(seenMaxTokens.every((m) => m === 8192)).toBe(true);
+    expect(seenPrompts[0]).toContain("逻辑章节列表");
+    expect(seenPrompts[0]).toContain("sec-abstract");
+    expect(seenPrompts[0]).toContain("sec-1");
   });
 });

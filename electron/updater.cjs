@@ -152,7 +152,7 @@ function buildDirectAssetFallbackUrl(tagName, platform, arch) {
 }
 
 async function fetchLatestReleaseInfo(currentVersion, platform, arch, timeoutMs = 8000) {
-  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.5";
+  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.6";
 
   // Tier 1: GitHub REST API
   try {
@@ -300,7 +300,7 @@ function sanitizeAssetFilename(rawName) {
 }
 
 function createDesktopUpdater({ app, shell, stopServer, getMainWindow }) {
-  const currentVersion = normalizeVersion(app.getVersion() || "1.1.5");
+  const currentVersion = normalizeVersion(app.getVersion() || "1.1.6");
   const capabilities = detectInstallCapabilities(app);
   const platform = process.platform;
   const arch = process.arch === "arm64" ? "arm64" : process.arch === "x64" ? "x64" : "unknown";
