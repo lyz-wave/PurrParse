@@ -123,8 +123,14 @@ export async function POST(req: Request): Promise<Response> {
         }
       } catch (err) {
         if (!req.signal.aborted && !(err instanceof Error && err.name === "AbortError")) {
-          const message = err instanceof Error ? err.message : "Unexpected analysis error";
-          enqueueEvent(controller, { type: "error", message });
+          console.error("[/api/analyze] error:", err);
+          const rawMsg =
+            err instanceof Error
+              ? err.message || `${err.name}: 未知服务端异常`
+              : typeof err === "string"
+                ? err
+                : "Unexpected analysis error";
+          enqueueEvent(controller, { type: "error", message: rawMsg || "Unexpected analysis error" });
         }
       } finally {
         if (!streamClosed) {

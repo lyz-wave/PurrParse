@@ -221,7 +221,11 @@ async function executeTask(taskId: string) {
       });
     } else {
       const msg =
-        err instanceof Error ? err.message : "解析过程中出现错误，请检查网络或 AI 接口配置。";
+        err instanceof Error
+          ? err.message || `${err.name}: 解析过程异常`
+          : typeof err === "string" && err.trim()
+            ? err
+            : "解析过程中出现错误，请检查网络或 AI 接口配置。";
       st.updateAnalysisTask(taskId, {
         status: "error",
         message: "解析失败，可点击重试",

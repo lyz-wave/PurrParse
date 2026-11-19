@@ -212,7 +212,10 @@ export async function runStreamedAnalysis({
   const processLine = (rawLine: string) => {
     const trimmed = rawLine.trim();
     if (!trimmed) return;
-    const event = JSON.parse(trimmed) as AnalysisStreamEvent | { type: "error"; message: string };
+    const event = JSON.parse(trimmed) as
+      | AnalysisStreamEvent
+      | { type: "error"; message?: string };
+    if (!event || typeof event !== "object") return;
     if (event.type === "status") {
       onProgress(event.progress, event.message);
     } else if (event.type === "source-ready") {
@@ -228,7 +231,7 @@ export async function runStreamedAnalysis({
       onProgress(92, "已生成底部实战与复盘军火库...");
       if (event.partialDocument) onPartialDocument?.(event.partialDocument);
     } else if (event.type === "error") {
-      throw new Error(event.message);
+      throw new Error(event.message || "服务端解析返回未知错误");
     } else if (event.type === "complete") {
       completedDoc = event.document;
       onProgress(100, "精读工作台已就绪");

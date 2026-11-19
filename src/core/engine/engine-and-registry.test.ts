@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { WorkbenchDocument, WorkbenchUnit } from "@/core/contracts/document-ast";
 import type {
   AnnotatedUnitOutput,
@@ -14,7 +15,11 @@ import {
   buildHydratedUnit,
 } from "@/core/contracts/shared-schemas";
 import { chunkArray, runChunkedAnalysis } from "./chunk-orchestrator";
-import type { StructuredObjectGenerator } from "./llm-adapters";
+import {
+  createAiSdkObjectGenerator,
+  createNormalizingOpenAiFetch,
+  type StructuredObjectGenerator,
+} from "./llm-adapters";
 import { PluginRegistry } from "../registry/plugin-registry";
 import { academicPaperPlugin, defaultPluginRegistry } from "@/plugins";
 import { compileDocumentToStandaloneHtml } from "@/exporters/html-compiler";
@@ -473,5 +478,253 @@ describe("ChunkedAnalysisEngine & PluginRegistry Extensibility", () => {
       { generator: fastGenerator, abortSignal: abortController.signal }
     );
     await expect(abortedGen.next()).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+describe("LLM Adapter Gateway Normalization", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const SampleSchema = z.object({
+    ok: z.boolean(),
+    label: z.string(),
+  });
+
+  it("turns HTTP 200 empty choices into a descriptive error instead of undefined.message crash", async () => {
+    const baseFetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          id: "cmpl-empty",
+          object: "chat.completion",
+          choices: [],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    const normalizedFetch = createNormalizingOpenAiFetch(baseFetch);
+    await expect(
+      normalizedFetch("https://relay.example.com/v1/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({ model: "deepseek-chat" }),
+      })
+    ).rejects.toThrow(/模型网关返回了空的 choices 列表/);
+
+    const seenUrls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        seenUrls.push(String(input));
+        return new Response(
+          JSON.stringify({
+            id: "cmpl-empty-2",
+            object: "chat.completion",
+            choices: [],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      })
+    );
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "openai",
+      apiKey: "sk-test",
+      model: "deepseek-chat",
+      baseUrl: "https://relay.example.com",
+    });
+
+    let caughtError: unknown;
+    try {
+      await generator.generate({
+        schema: SampleSchema,
+        schemaName: "sample_empty_choices",
+        prompt: "return sample",
+      });
+    } catch (err) {
+      caughtError = err;
+    }
+
+    expect(caughtError).toBeInstanceOf(Error);
+    const msg = (caughtError as Error).message;
+    expect(msg).not.toContain("Cannot read properties of undefined");
+    expect(msg).toMatch(/[\u4e00-\u9fa5]/);
+    expect(seenUrls[0]).toBe("https://relay.example.com/v1/chat/completions");
+  });
+
+  it("converts SSE text/event-stream responses on non-streaming requests into valid completions", async () => {
+    const ssePayload = [
+      'data: {"id":"sse-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"{\\"ok\\":true,"}}]}',
+      "",
+      'data: {"id":"sse-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"\\"label\\":\\"sse\\"}"}}]}',
+      "",
+      'data: {"id":"sse-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+
+    const normalizedFetch = createNormalizingOpenAiFetch(async () =>
+      new Response(ssePayload, {
+        status: 200,
+        headers: { "content-type": "text/event-stream; charset=utf-8" },
+      })
+    );
+    const normalizedRes = await normalizedFetch("https://relay.example.com/v1/chat/completions", {
+      method: "POST",
+    });
+    expect(normalizedRes.ok).toBe(true);
+    expect(normalizedRes.headers.get("content-type")).toContain("application/json");
+    const parsedJson = (await normalizedRes.json()) as {
+      choices: Array<{ message?: { content?: string }; finish_reason?: string }>;
+    };
+    expect(parsedJson.choices).toHaveLength(1);
+    expect(parsedJson.choices[0]?.message?.content).toBe('{"ok":true,"label":"sse"}');
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(ssePayload, {
+          status: 200,
+          headers: { "content-type": "text/event-stream; charset=utf-8" },
+        })
+      )
+    );
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "openai",
+      apiKey: "sk-test",
+      model: "deepseek-chat",
+      baseUrl: "https://relay.example.com/v1",
+    });
+
+    const result = await generator.generate({
+      schema: SampleSchema,
+      schemaName: "sample_sse",
+      prompt: "return sample",
+    });
+    expect(result).toEqual({ ok: true, label: "sse" });
+  });
+
+  it("merges multi-choice reasoning and JSON content responses", async () => {
+    const multiChoicePayload = {
+      id: "cmpl-multi",
+      object: "chat.completion",
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", reasoning_content: "thinking step" },
+          finish_reason: null,
+        },
+        {
+          index: 1,
+          message: { role: "assistant", content: '{"ok":true,"label":"merged"}' },
+          finish_reason: "stop",
+        },
+      ],
+    };
+
+    const normalizedFetch = createNormalizingOpenAiFetch(async () =>
+      new Response(JSON.stringify(multiChoicePayload), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    const res = await normalizedFetch("https://relay.example.com/v1/chat/completions", {
+      method: "POST",
+    });
+    const mergedBody = (await res.json()) as {
+      choices: Array<{ message?: { content?: string } }>;
+    };
+    expect(mergedBody.choices).toHaveLength(1);
+    expect(mergedBody.choices[0]?.message?.content).toBe('{"ok":true,"label":"merged"}');
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify(multiChoicePayload), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "openai",
+      apiKey: "sk-test",
+      model: "deepseek-reasoner",
+      baseUrl: "https://relay.example.com/v1",
+    });
+    const result = await generator.generate({
+      schema: SampleSchema,
+      schemaName: "sample_multi_choice",
+      prompt: "return sample",
+    });
+    expect(result).toEqual({ ok: true, label: "merged" });
+  });
+
+  it("surfaces HTTP 200 error envelopes from upstream gateways", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "Upstream quota exceeded",
+              code: "insufficient_quota",
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+    );
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "openai",
+      apiKey: "sk-test",
+      model: "deepseek-chat",
+      baseUrl: "https://relay.example.com/v1",
+    });
+
+    await expect(
+      generator.generate({
+        schema: SampleSchema,
+        schemaName: "sample_http200_error",
+        prompt: "return sample",
+      })
+    ).rejects.toThrow(/Upstream quota exceeded/);
+  });
+
+  it("skips redundant generateText fallback on HTTP 401 authentication errors", async () => {
+    const fetchSpy = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "Invalid API key",
+            type: "authentication_error",
+          },
+        }),
+        { status: 401, headers: { "content-type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "openai",
+      apiKey: "sk-invalid",
+      model: "deepseek-chat",
+      baseUrl: "https://relay.example.com/v1",
+    });
+
+    await expect(
+      generator.generate({
+        schema: SampleSchema,
+        schemaName: "sample_auth_401",
+        prompt: "return sample",
+      })
+    ).rejects.toThrow(/Invalid API key/);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
