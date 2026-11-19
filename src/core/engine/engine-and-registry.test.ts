@@ -727,4 +727,152 @@ describe("LLM Adapter Gateway Normalization", () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("uses stream: true with JSON schema prompt first for OpenAI-compatible proxies and handles heartbeat/reasoning SSE quirks", async () => {
+    const capturedBodies: Array<{ stream?: boolean; response_format?: unknown; messages?: Array<{ role: string; content: string }> }> = [];
+    const messySse = [
+      ": keepalive",
+      'data: {"id":"s1","choices":[]}',
+      'data: {"id":"s1","choices":[{"delta":{"role":"model","reasoning_content":"<think>planning</think>"}}]}',
+      'data: {"id":"s1","choices":[{"delta":{"role":"","content":"```json\\n{\\"ok\\":true,"}}]}',
+      'data: {"id":"s1","choices":[{"delta":{"content":"\\"label\\":\\"streamed\\"}\\n```"},"finish_reason":"stop"}]}',
+      "data: [DONE]",
+    ].join("\n\n");
+
+    const fetchSpy = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (typeof init?.body === "string") {
+        capturedBodies.push(JSON.parse(init.body));
+      }
+      return new Response(messySse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream; charset=utf-8" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "deepseek",
+      apiKey: "sk-test",
+      model: "deepseek-v4.1-flash-eco",
+      baseUrl: "https://relay.example.com",
+    });
+
+    const result = await generator.generate({
+      schema: SampleSchema,
+      schemaName: "sample_proxy_stream",
+      prompt: "return sample",
+    });
+
+    expect(result).toEqual({ ok: true, label: "streamed" });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(capturedBodies[0]?.stream).toBe(true);
+    expect(capturedBodies[0]?.response_format).toBeUndefined();
+    const systemMsg = capturedBodies[0]?.messages?.find((m) => m.role === "system")?.content ?? "";
+    expect(systemMsg).toContain('"label"');
+  });
+
+  it("extracts JSON from reasoning-only SSE streams when content delta is absent", async () => {
+    const reasoningOnlySse = [
+      'data: {"id":"r1","choices":[{"delta":{"role":"assistant","reasoning_content":"Thinking... {\\"ok\\":false,\\"label\\":\\"from-reasoning\\"}"}}]}',
+      'data: {"id":"r1","choices":[{"delta":{},"finish_reason":"stop"}]}',
+      "data: [DONE]",
+    ].join("\n\n");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(reasoningOnlySse, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        })
+      )
+    );
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "custom",
+      apiKey: "sk-test",
+      model: "deepseek-reasoner",
+      baseUrl: "https://relay.example.com/v1",
+    });
+
+    const result = await generator.generate({
+      schema: SampleSchema,
+      schemaName: "sample_reasoning_only",
+      prompt: "return sample",
+    });
+    expect(result).toEqual({ ok: false, label: "from-reasoning" });
+  });
+
+  it("surfaces clear error on empty SSE stream without burning redundant non-stream call", async () => {
+    const fetchSpy = vi.fn(async () =>
+      new Response("data: [DONE]\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "custom",
+      apiKey: "sk-test",
+      model: "deepseek-v4.1-flash-eco",
+      baseUrl: "https://relay.example.com/v1",
+    });
+
+    await expect(
+      generator.generate({
+        schema: SampleSchema,
+        schemaName: "sample_empty_sse",
+        prompt: "return sample",
+      })
+    ).rejects.toThrow(/空的流式响应/);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to generateObject backup only when streamed text fails JSON schema parsing", async () => {
+    let callCount = 0;
+    const fetchSpy = vi.fn(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return new Response(
+          [
+            'data: {"id":"bad-json","choices":[{"index":0,"delta":{"role":"assistant","content":"not valid json at all"},"finish_reason":"stop"}]}',
+            "data: [DONE]",
+          ].join("\n\n"),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          id: "backup-ok",
+          object: "chat.completion",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: '{"ok":true,"label":"backup"}' },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const generator = createAiSdkObjectGenerator({
+      provider: "custom",
+      apiKey: "sk-test",
+      model: "deepseek-chat",
+      baseUrl: "https://relay.example.com/v1",
+    });
+
+    const result = await generator.generate({
+      schema: SampleSchema,
+      schemaName: "sample_backup_obj",
+      prompt: "return sample",
+    });
+    expect(result).toEqual({ ok: true, label: "backup" });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
 });

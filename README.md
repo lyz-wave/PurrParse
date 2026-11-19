@@ -8,7 +8,7 @@
 
   <p>
     <a href="https://github.com/lyz-wave/PurrParse/releases/latest">
-      <img src="https://img.shields.io/badge/release-v1.1.4-1a2744?style=flat-square" alt="Release v1.1.4" />
+      <img src="https://img.shields.io/badge/release-v1.1.5-1a2744?style=flat-square" alt="Release v1.1.5" />
     </a>
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Web-3b5998?style=flat-square" alt="macOS Windows Web" />
     <img src="https://img.shields.io/badge/stack-Next.js%2015%20%C2%B7%20Electron%20%C2%B7%20TypeScript-0f172a?style=flat-square" alt="Next.js 15 Electron TypeScript" />
@@ -104,16 +104,16 @@
 
 ---
 
-## 桌面端下载（v1.1.4）
+## 桌面端下载（v1.1.5）
 
 > 也可以直接访问 [**purrparse.xyz**](https://purrparse.xyz) 自动识别本机系统与芯片架构下载。
 
 | 平台 | 架构 | 安装包直链 |
 | :--- | :--- | :--- |
-| **macOS** | Apple Silicon (`M1–M4 / arm64`) | [`PurrParse-1.1.4-mac-arm64.dmg`](https://github.com/lyz-wave/PurrParse/releases/latest/download/PurrParse-1.1.4-mac-arm64.dmg) |
-| **macOS** | Intel (`x64`) | [`PurrParse-1.1.4-mac-x64.dmg`](https://github.com/lyz-wave/PurrParse/releases/latest/download/PurrParse-1.1.4-mac-x64.dmg) |
-| **Windows** | `x64`（64 位标准） | [`PurrParse-1.1.4-win-x64-Setup.exe`](https://github.com/lyz-wave/PurrParse/releases/latest/download/PurrParse-1.1.4-win-x64-Setup.exe) |
-| **Windows** | `ARM64` | [`PurrParse-1.1.4-win-arm64-Setup.exe`](https://github.com/lyz-wave/PurrParse/releases/latest/download/PurrParse-1.1.4-win-arm64-Setup.exe) |
+| **macOS** | Apple Silicon (`M1–M4 / arm64`) | [`PurrParse-1.1.5-mac-arm64.dmg`](https://github.com/lyz-wave/PurrParse/releases/latest/download/PurrParse-1.1.5-mac-arm64.dmg) |
+| **macOS** | Intel (`x64`) | [`PurrParse-1.1.5-mac-x64.dmg`](https://github.com/lyz-wave/PurrParse/releases/latest/download/PurrParse-1.1.5-mac-x64.dmg) |
+| **Windows** | `x64`（64 位标准） | [`PurrParse-1.1.5-win-x64-Setup.exe`](https://github.com/lyz-wave/PurrParse/releases/latest/download/PurrParse-1.1.5-win-x64-Setup.exe) |
+| **Windows** | `ARM64` | [`PurrParse-1.1.5-win-arm64-Setup.exe`](https://github.com/lyz-wave/PurrParse/releases/latest/download/PurrParse-1.1.5-win-arm64-Setup.exe) |
 
 - **首次运行提示**：
   - **macOS**：项目使用开源 Ad-hoc 签名，若从浏览器下载后首次拖入「应用程序」提示“已损坏，无法打开”，在终端执行 `xattr -cr /Applications/PurrParse.app` 即可（后续通过 App 内在线更新会自动清除隔离属性并替换重启）。

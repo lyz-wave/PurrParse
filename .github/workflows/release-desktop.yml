@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.4)"
+        description: "Release tag name (e.g. v1.1.5)"
         required: true
-        default: "v1.1.4"
+        default: "v1.1.5"
 
 permissions:
   contents: write
@@ -39,6 +39,10 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           cat <<'EOF' > /tmp/release-notes.md
+          ### v1.1.5 主要更新
+
+          - **OpenAI 兼容 / DeepSeek 中转流式优先引擎**：针对第三方中转站及推理模型在非流式（`stream: false`）长文本生成时容易超时或返回空 `choices: []` 的问题，所有 OpenAI 兼容 / DeepSeek / 自定义代理默认切换为流式 SSE（`stream: true`）并发出结构化 Schema 约束提示，彻底绕开中转站非流式缓冲超时并跳过冗余等待；流式转换器同时兼容心跳空帧、`reasoning_content` 推理段兜底提取、缺失 `index` 补全与空流诊断提示。
+
           ### v1.1.4 主要更新
 
           - **OpenAI 兼容 / DeepSeek 中转网关响应规范化**：修复中转网关或模型返回空 `choices: []` 时触发 `Cannot read properties of undefined (reading 'message')` 崩溃的问题，改为清晰的中文错误提示；支持自动剥离/拼接 `/v1` 路径、合并多 choice 推理与正文、将非流式请求意外返回的 `text/event-stream` SSE 响应还原为标准 JSON、显式暴露 HTTP 200 `{ error }` 包裹异常，并在认证/限流/超时错误时跳过冗余的二次降级调用。
