@@ -33,10 +33,9 @@ jobs:
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
-      build_mac: ${{ steps.meta.outputs.build_mac }}
-      build_win: ${{ steps.meta.outputs.build_win }}
       target_platforms: ${{ steps.meta.outputs.target_platforms }}
       is_platform_only: ${{ steps.meta.outputs.is_platform_only }}
+      matrix: ${{ steps.meta.outputs.matrix }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -69,21 +68,47 @@ jobs:
           echo "version=$CLEAN_VER" >> "$GITHUB_OUTPUT"
 
           if [[ "$SCOPE" == "win" ]]; then
-            echo "build_mac=false" >> "$GITHUB_OUTPUT"
-            echo "build_win=true" >> "$GITHUB_OUTPUT"
             echo "target_platforms=win32" >> "$GITHUB_OUTPUT"
             echo "is_platform_only=true" >> "$GITHUB_OUTPUT"
           elif [[ "$SCOPE" == "mac" ]]; then
-            echo "build_mac=true" >> "$GITHUB_OUTPUT"
-            echo "build_win=false" >> "$GITHUB_OUTPUT"
             echo "target_platforms=darwin" >> "$GITHUB_OUTPUT"
             echo "is_platform_only=true" >> "$GITHUB_OUTPUT"
           else
-            echo "build_mac=true" >> "$GITHUB_OUTPUT"
-            echo "build_win=true" >> "$GITHUB_OUTPUT"
             echo "target_platforms=darwin,win32" >> "$GITHUB_OUTPUT"
             echo "is_platform_only=false" >> "$GITHUB_OUTPUT"
           fi
+
+          MATRIX_JSON=$(SCOPE="$SCOPE" node -e '
+            const mac = [
+              {
+                label: "macOS Apple Silicon (arm64)",
+                os: "macos-latest",
+                platform: "mac",
+                commands: "npx electron-builder --mac dmg --arm64 --publish never && node scripts/build-patch-bundle.mjs",
+                pattern: "dist-electron/*.dmg dist-electron/PurrParse-patch-*.tar.gz dist-electron/PurrParse-patch-manifest.json",
+              },
+              {
+                label: "macOS Intel (x64)",
+                os: "macos-15-intel",
+                platform: "mac",
+                commands: "npx electron-builder --mac dmg --x64 --publish never",
+                pattern: "dist-electron/*.dmg",
+              },
+            ];
+            const win = [
+              {
+                label: "Windows (x64 & arm64)",
+                os: "windows-latest",
+                platform: "win",
+                commands: "npx electron-builder --win nsis --x64 --publish never && npx electron-builder --win nsis --arm64 --publish never",
+                pattern: "dist-electron/*.exe",
+              },
+            ];
+            const s = process.env.SCOPE;
+            const list = s === "win" ? win : s === "mac" ? mac : [...mac, ...win];
+            process.stdout.write(JSON.stringify(list));
+          ')
+          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
 
       - name: Create or update Release notes
         env:
@@ -188,26 +213,10 @@ jobs:
   build-desktop:
     name: Build ${{ matrix.label }}
     needs: prepare-release
-    if: (matrix.platform == 'mac' && needs.prepare-release.outputs.build_mac == 'true') || (matrix.platform == 'win' && needs.prepare-release.outputs.build_win == 'true')
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - label: macOS Apple Silicon (arm64)
-            os: macos-latest
-            platform: mac
-            commands: "npx electron-builder --mac dmg --arm64 --publish never && node scripts/build-patch-bundle.mjs"
-            pattern: dist-electron/*.dmg dist-electron/PurrParse-patch-*.tar.gz dist-electron/PurrParse-patch-manifest.json
-          - label: macOS Intel (x64)
-            os: macos-15-intel
-            platform: mac
-            commands: "npx electron-builder --mac dmg --x64 --publish never"
-            pattern: dist-electron/*.dmg
-          - label: Windows (x64 & arm64)
-            os: windows-latest
-            platform: win
-            commands: "npx electron-builder --win nsis --x64 --publish never && npx electron-builder --win nsis --arm64 --publish never"
-            pattern: dist-electron/*.exe
+        include: ${{ fromJson(needs.prepare-release.outputs.matrix) }}
 
     runs-on: ${{ matrix.os }}
 
