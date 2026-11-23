@@ -89,7 +89,7 @@ export function buildAcademicBatchPrompt(
     "   - dim3 (蓝): 实证证据/数据/引用支撑",
     "   - dim4 (绿): 让步/反驳/局限性讨论",
     "   - dim5 (紫): 方法论/模型设计/数学设定",
-    "4. 若本段含公式或算法，在 tensorOrStateFlow 中写出清晰的张量维度流向（如 Q[n,d_k] x K^T[d_k,m] -> Scores[n,m]）。",
+    "4. 若本段含公式或算法，在 tensorOrStateFlow 中写出清晰的张量维度流向与符号定义，所有数学符号与公式必须用 `$ ... $` 包裹标准 LaTeX（例如 `$Q[n,d_k] \\times K^T[d_k,m] \\rightarrow \\mathrm{Scores}[n,m]$`、`$\\hat{z}_{t+1:t+H}[H, d_z]$`、`$L_{\\mathrm{distill}} = \\lVert P(F_t) - G_t \\rVert^2$`；多字母下标用 `_{\\mathrm{...}}`，戴帽字母用 `\\hat{...}` 而非 Unicode 组合字符）。",
     "5. notes 数组按顺序固定输出 4 项，并在重要判断前标明 `[原文明示]`、`[分析推断]` 或 `[原文未说明]`：",
     "   - notes[0]: 逻辑演进与跨节锚点（如有跨节呼应，填 echoTargetId 与 echoLabel）",
     "   - notes[1]: 段落功能与逻辑角色（必须回答：若删掉这一段，论证链是否真的断裂？）",

@@ -219,16 +219,31 @@ export async function runStreamedAnalysis({
     if (event.type === "status") {
       onProgress(event.progress, event.message);
     } else if (event.type === "source-ready") {
-      onProgress(22, `已清洗提取 ${event.totalUnits} 个单元，开始深度解析...`);
+      onProgress(16, `已清洗提取 ${event.totalUnits} 个单元，正在精译开篇前 5 段...`);
     } else if (event.type === "top-model") {
-      onProgress(40, "已构建顶层心智模型与架构图（可提前进入阅读）...");
-      if (event.partialDocument) onPartialDocument?.(event.partialDocument);
+      if (event.readyForReading !== false) {
+        onProgress(40, "已构建顶层心智模型与架构图（可进入阅读）...");
+        if (event.partialDocument) onPartialDocument?.(event.partialDocument);
+      } else {
+        onProgress(22, "已构建全局框架，正在完整精译前 5 段以备无缝开读...");
+      }
     } else if (event.type === "unit-batch") {
-      const pct = Math.min(86, 35 + Math.round((event.batchIndex / Math.max(1, event.totalBatches)) * 50));
-      onProgress(pct, `已完成批注批次 ${event.batchIndex}/${event.totalBatches}...`);
-      if (event.partialDocument) onPartialDocument?.(event.partialDocument);
+      const pct = Math.min(88, 35 + Math.round((event.batchIndex / Math.max(1, event.totalBatches)) * 52));
+      if (event.readyForReading !== false && event.partialDocument) {
+        onPartialDocument?.(event.partialDocument);
+      }
+      if (event.batchIndex >= 1 && event.totalBatches > 1 && event.readyForReading !== false) {
+        onProgress(
+          pct,
+          event.batchIndex <= 2
+            ? "前 5 段已译妥可进入阅读 · 后续正文逐段生成中..."
+            : `正在逐段生成正文（${event.batchIndex}/${event.totalBatches}）...`
+        );
+      } else {
+        onProgress(pct, `正在精译开篇前 5 段（${event.batchIndex}/${event.totalBatches}）...`);
+      }
     } else if (event.type === "bottom") {
-      onProgress(92, "已生成底部实战与复盘军火库...");
+      onProgress(94, "已生成底部实战与复盘军火库...");
       if (event.partialDocument) onPartialDocument?.(event.partialDocument);
     } else if (event.type === "error") {
       throw new Error(event.message || "服务端解析返回未知错误");

@@ -731,7 +731,7 @@ export function WorkspaceHome({
                   onClick={() =>
                     setAnalysisSpeedMode(analysisSpeedMode === "fast" ? "balanced" : "fast")
                   }
-                  title="点击切换解析速度策略（极速模式精简字段输出并提升至 5 路并发；标准精读保留全量深度批注与 4 路并发）"
+                  title="点击切换生成策略：两种模式均先完整生成好前 5 段才开放进入阅读（避免打断阅读节奏）；「先5段后逐段」第 6 段起严格 1 段 1 次稳步生成，报错最少；「前5后微批」后段每批 2 段轻并发加速"
                   className={`font-mono text-[11px] px-2.5 py-1.5 rounded-lg border cursor-pointer transition-colors ${
                     analysisSpeedMode === "fast"
                       ? isDark
@@ -750,7 +750,7 @@ export function WorkspaceHome({
                       : undefined
                   }
                 >
-                  {analysisSpeedMode === "fast" ? "极速模式 · 5并发" : "标准精读 · 4并发"}
+                  {analysisSpeedMode === "fast" ? "前5后微批 · 极速" : "先5段后逐段 · 稳健"}
                 </button>
 
                 <button

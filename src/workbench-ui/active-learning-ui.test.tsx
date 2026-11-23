@@ -28,6 +28,7 @@ import { TopMentalPanel } from "./TopMentalPanel";
 import { UpdateBanner } from "./UpdateBanner";
 import { useAppUpdater } from "./use-app-updater";
 import { createInitialUpdateState } from "@/core/engine/app-updater";
+import { formatFlowTextForMath, normalizeLatexSyntax } from "@/core/engine/flow-math";
 import { WorkbenchShell } from "./WorkbenchShell";
 import { WorkspaceHome } from "./WorkspaceHome";
 import { detectOmniSource } from "./analyze-client";
@@ -1826,6 +1827,65 @@ describe("Active-Learning UI Components (Blind & Mode-Agnostic)", () => {
     }
   });
 
+  it("supports smooth pointer-drag scrubbing along ProximitySidebar track when native scrollbar is hidden", () => {
+    const scrollToSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(
+      document.documentElement,
+      "scrollHeight"
+    );
+    Object.defineProperty(document.documentElement, "scrollHeight", {
+      configurable: true,
+      value: 2000 + window.innerHeight,
+    });
+
+    try {
+      const sidebarView = render(
+        <ProximitySidebar
+          sections={[
+            { id: "scrub-1", label: "Part 1", kind: "title" },
+            { id: "scrub-2", label: "Part 2", kind: "subtitle" },
+          ]}
+          side="right"
+        />
+      );
+      const track = sidebarView.getByTestId("proximity-sidebar-track");
+      vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
+        top: 100,
+        bottom: 300,
+        height: 200,
+        left: 1100,
+        right: 1180,
+        width: 80,
+        x: 1100,
+        y: 100,
+        toJSON: () => ({}),
+      });
+
+      fireEvent(
+        track,
+        new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, clientY: 120 })
+      );
+      fireEvent(
+        track,
+        new MouseEvent("pointermove", { bubbles: true, cancelable: true, clientY: 200 })
+      );
+      fireEvent(
+        track,
+        new MouseEvent("pointerup", { bubbles: true, cancelable: true, button: 0, clientY: 200 })
+      );
+
+      expect(scrollToSpy).toHaveBeenCalledWith({ top: 1000, behavior: "auto" });
+      sidebarView.unmount();
+    } finally {
+      scrollToSpy.mockRestore();
+      if (originalScrollHeight) {
+        Object.defineProperty(document.documentElement, "scrollHeight", originalScrollHeight);
+      } else {
+        delete (document.documentElement as { scrollHeight?: number }).scrollHeight;
+      }
+    }
+  });
+
   it("ThemeSelector renders PurrParse theme previews and supports ArrowRight keyboard navigation", () => {
     const onChange = vi.fn();
     const view = render(<ThemeSelector defaultValue="paper" onChange={onChange} />);
@@ -2710,5 +2770,91 @@ describe("Active-Learning UI Components (Blind & Mode-Agnostic)", () => {
     );
     expect(recoveredView.container.textContent).not.toContain("重试本段翻译");
     recoveredView.unmount();
+  });
+
+  it("renders bare and Unicode tensor/state-flow equations with KaTeX in DualColumnRow without mangling prose or code chains", () => {
+    const phoenixFlow =
+      "[分析推断，原文未给出任何维度数值] 观测帧 x_t[H,W,3] -> Phoenix 编码器 (DINOv3 底座) -> 场景结构特征 F_t[D]; 教师一 (几何) 输出 G_t[D_g]、教师二 (时空语义) 输出 S_t[D_s]，经投影头对齐后 L_distill = ||P(F_t) - G_t||^2 + ||P(F_t) - S_t||^2; CS-VAE 编码器 E(F_t[D]) -> 生成潜变量 z_t[d_z] (d_z << D)，解码器重建以保留场景信息与空间布局; 预测头输出 ẑ_{t+1:t+H}[H,d_z]、外观潜变量 â_{t+1:t+H}[H,d_v] 与动作 a_{t:t+H}[H,d_a]。";
+
+    const formattedPhoenix = formatFlowTextForMath(phoenixFlow);
+    expect(formattedPhoenix).toContain("$x_t[H,W,3]$");
+    expect(formattedPhoenix).toContain(
+      "$L_{\\mathrm{distill}} = \\lVert P(F_t) - G_t \\rVert^2 + \\lVert P(F_t) - S_t \\rVert^2$"
+    );
+    expect(formattedPhoenix).toContain("($d_z \\ll D$)");
+    expect(formattedPhoenix).toContain("$\\hat{z}_{t+1:t+H}[H,d_z]$");
+    expect(formattedPhoenix).toContain("$\\hat{a}_{t+1:t+H}[H,d_v]$");
+    expect(formattedPhoenix).toContain("$a_{t:t+H}[H,d_a]$");
+    expect(formattedPhoenix).toContain("Phoenix 编码器");
+    expect(formattedPhoenix).not.toContain("$Phoenix$");
+    expect(formattedPhoenix).not.toContain("$CS-VAE$");
+
+    // Plain code state chains without mathematical operators must stay readable prose without $ wrapping
+    const codeChain = formatFlowTextForMath(
+      "Request -> IdempotencyKey(Redis SETNX) -> Lua Enqueue -> Worker Pop"
+    );
+    expect(codeChain).toBe("Request → IdempotencyKey(Redis SETNX) → Lua Enqueue → Worker Pop");
+    expect(codeChain).not.toContain("$");
+
+    const demoAttnFlow = formatFlowTextForMath(
+      "Q [n, d_k] × K^T [d_k, m] -> Scores [n, m] -> (÷ √d_k & Softmax) -> Weights [n, m] × V [m, d_v] -> Out [n, d_v]"
+    );
+    expect(demoAttnFlow).toContain("$Q[n, d_k] \\times K^T[d_k, m]$");
+    expect(demoAttnFlow).toContain("$\\mathrm{Scores}[n, m]$");
+    expect(demoAttnFlow).toContain("(÷ $\\sqrt{d_k}$ & Softmax)");
+    expect(demoAttnFlow).not.toContain("& Softmax$");
+
+    const multiHeadFlow = formatFlowTextForMath(
+      "X [n, 512] × W_i [512, 64] -> 8 × head_i [n, 64] -> Concat [n, 512] × W^O [512, 512] -> Out [n, 512]"
+    );
+    expect(multiHeadFlow).toContain("$8 \\times \\mathrm{head}_i[n, 64]$");
+    expect(multiHeadFlow).toContain("$\\mathrm{Out}[n, 512]$");
+
+    // Multiplication & upright-word rules must never corrupt `\text{model}`, `softmax`, or uppercase matrix products like `QK^T` / `QW_i^Q`
+    expect(normalizeLatexSyntax("d_{\\text{model}}")).toBe("d_{\\text{model}}");
+    expect(normalizeLatexSyntax("\\text{softmax}(Q x K^T)")).toBe("\\text{softmax}(Q \\times K^T)");
+    expect(normalizeLatexSyntax("QK^T + QW_i^Q")).toBe("QK^T + QW_i^Q");
+
+    const paperDoc = DEMO_DOCUMENTS[0];
+    const flowUnit = {
+      ...paperDoc.units[0],
+      formulas: [
+        {
+          latex: "",
+          flowLabel: "TENSOR / STATE FLOW",
+          flowText: phoenixFlow,
+        },
+      ],
+    };
+
+    const view = render(
+      <DualColumnRow
+        unit={flowUnit}
+        layoutRatio={paperDoc.layoutRatio}
+        dimensions={paperDoc.dimensions}
+        labels={paperDoc.labels}
+        activeDimFilter={null}
+        hideSecondary={false}
+        hideNotes={false}
+        isFlashed={false}
+        userNote=""
+        onUserNoteChange={() => {}}
+        onJumpToUnit={() => {}}
+        onHoverTooltip={() => {}}
+        onLeaveTooltip={() => {}}
+      />
+    );
+
+    const katexSpans = view.container.querySelectorAll(".inline-math .katex");
+    expect(katexSpans.length).toBeGreaterThanOrEqual(8);
+    const texAttrs = Array.from(view.container.querySelectorAll(".inline-math")).map((el) =>
+      el.getAttribute("data-tex")
+    );
+    expect(texAttrs).toContain("\\hat{z}_{t+1:t+H}[H,d_z]");
+    expect(texAttrs).toContain(
+      "L_{\\mathrm{distill}} = \\lVert P(F_t) - G_t \\rVert^2 + \\lVert P(F_t) - S_t \\rVert^2"
+    );
+    expect(view.container.textContent).toContain("[分析推断]");
+    view.unmount();
   });
 });

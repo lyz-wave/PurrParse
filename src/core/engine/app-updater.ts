@@ -2,7 +2,7 @@ export const APP_GITHUB_REPO = "lyz-wave/PurrParse";
 export const APP_RELEASES_PAGE_URL = `https://github.com/${APP_GITHUB_REPO}/releases`;
 export const APP_LATEST_RELEASE_URL = `${APP_RELEASES_PAGE_URL}/latest`;
 export const APP_DOWNLOAD_PAGE_URL = "https://purrparse.xyz";
-export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.1.11";
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.1.12";
 
 export type AppUpdateStatus =
   | "idle"
@@ -49,11 +49,71 @@ export interface AppUpdateState {
   source: AppUpdateSource | null;
 }
 
-/** Strips whitespace and any leading "v"/"V" prefix from a semver string. */
+/**
+ * Strips whitespace, optional platform tag prefixes (e.g. "win-v1.1.12", "mac-v1.1.12"),
+ * platform tag suffixes (e.g. "v1.1.12-win", "v1.1.12-mac"), and leading "v"/"V" from a semver string.
+ */
 export function normalizeVersion(raw: string): string {
   return String(raw || "")
     .trim()
-    .replace(/^v+/i, "");
+    .replace(/^(?:win(?:dows)?|mac(?:os)?|darwin|linux)[-_]?/i, "")
+    .replace(/^v+/i, "")
+    .replace(/-(?:win(?:dows)?|mac(?:os)?|darwin|linux)$/i, "");
+}
+
+/**
+ * Infers explicit target platforms from a GitHub release tag such as
+ * `win-v1.1.12`, `v1.1.12-win`, `mac-v1.1.12`, or `v1.1.12-mac`.
+ * Returns null when the tag does not scope to a single OS.
+ */
+export function parseTagTargetPlatforms(tagName: string): AppUpdatePlatform[] | null {
+  const tag = String(tagName || "").trim().toLowerCase();
+  if (!tag) return null;
+  if (/^(?:win|windows)[-_]?v?\d/.test(tag) || /-(?:win|windows)(?:$|[.-])/.test(tag)) {
+    return ["win32"];
+  }
+  if (/^(?:mac|macos|darwin)[-_]?v?\d/.test(tag) || /-(?:mac|macos|darwin)(?:$|[.-])/.test(tag)) {
+    return ["darwin"];
+  }
+  if (/^(?:linux)[-_]?v?\d/.test(tag) || /-linux(?:$|[.-])/.test(tag)) {
+    return ["linux"];
+  }
+  return null;
+}
+
+/**
+ * Resolves which OS platform(s) a GitHub Release targets by checking the release tag first,
+ * then inspecting uploaded installer vs hot-patch assets when present.
+ */
+export function detectReleaseTargetPlatforms(release: {
+  tag_name?: string;
+  assets?: ReleaseAssetMeta[];
+}): AppUpdatePlatform[] | null {
+  const fromTag = parseTagTargetPlatforms(release.tag_name || "");
+  if (fromTag) return fromTag;
+
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  if (assets.length === 0) return null;
+
+  const hasPatch = assets.some((a) => /^purrparse-patch-.*\.tar\.gz$/i.test(String(a?.name || "")));
+  if (hasPatch) return null;
+
+  const hasMac = assets.some((a) => /\.dmg$/i.test(String(a?.name || "")));
+  const hasWin = assets.some((a) => /\.exe$/i.test(String(a?.name || "")));
+  if (hasMac && !hasWin) return ["darwin"];
+  if (hasWin && !hasMac) return ["win32"];
+  return null;
+}
+
+/** Returns true if a GitHub Release applies to the given client platform. */
+export function doesReleaseMatchPlatform(
+  release: { tag_name?: string; assets?: ReleaseAssetMeta[] },
+  platform: AppUpdatePlatform
+): boolean {
+  if (!platform || platform === "web") return true;
+  const targets = detectReleaseTargetPlatforms(release);
+  if (!targets || targets.length === 0) return true;
+  return targets.includes(platform);
 }
 
 interface ParsedSemver {
@@ -219,7 +279,7 @@ export function createInitialUpdateState(
 ): AppUpdateState {
   return {
     status: "idle",
-    currentVersion: normalizeVersion(currentVersion) || "1.1.11",
+    currentVersion: normalizeVersion(currentVersion) || "1.1.12",
     latestVersion: null,
     hasUpdate: false,
     releaseNotes: "",
@@ -279,10 +339,38 @@ function buildDirectAssetFallbackUrl(
   };
 }
 
+interface GitHubReleasePayload {
+  tag_name?: string;
+  body?: string;
+  html_url?: string;
+  published_at?: string;
+  draft?: boolean;
+  assets?: ReleaseAssetMeta[];
+}
+
+function selectLatestReleaseForPlatform(
+  payload: GitHubReleasePayload | GitHubReleasePayload[],
+  platform: AppUpdatePlatform
+): GitHubReleasePayload | null {
+  const candidates = (Array.isArray(payload) ? payload : [payload]).filter(
+    (rel) =>
+      rel &&
+      rel.draft !== true &&
+      typeof rel.tag_name === "string" &&
+      Boolean(normalizeVersion(rel.tag_name)) &&
+      doesReleaseMatchPlatform(rel, platform)
+  );
+  if (candidates.length === 0) return null;
+
+  return candidates.sort((a, b) =>
+    compareSemver(normalizeVersion(b.tag_name || ""), normalizeVersion(a.tag_name || ""))
+  )[0];
+}
+
 /**
- * Resolves the latest PurrParse release using a two-tier strategy:
- * 1) GitHub REST API (full metadata + release notes + exact asset sizes)
- * 2) GitHub /releases/latest HTTP redirect fallback (not subject to API rate limits)
+ * Resolves the latest PurrParse release for the current OS using a two-tier strategy:
+ * 1) GitHub REST API `/releases?per_page=10` (filters out drafts and other-OS-only releases)
+ * 2) GitHub `/releases/latest` HTTP redirect fallback (not subject to API rate limits)
  */
 export async function fetchLatestReleaseInfo({
   currentVersion,
@@ -291,15 +379,15 @@ export async function fetchLatestReleaseInfo({
   fetchImpl = fetch,
   timeoutMs = 8000,
 }: FetchLatestReleaseOptions): Promise<LatestReleaseResolution> {
-  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.11";
+  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.12";
 
-  // Tier 1: GitHub REST API
+  // Tier 1: GitHub REST API (lists recent releases so win-only / mac-only tags don't collide)
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const apiRes = await fetchImpl(
-        `https://api.github.com/repos/${APP_GITHUB_REPO}/releases/latest`,
+        `https://api.github.com/repos/${APP_GITHUB_REPO}/releases?per_page=10`,
         {
           method: "GET",
           headers: {
@@ -312,13 +400,23 @@ export async function fetchLatestReleaseInfo({
       );
 
       if (apiRes.ok) {
-        const data = (await apiRes.json()) as {
-          tag_name?: string;
-          body?: string;
-          html_url?: string;
-          published_at?: string;
-          assets?: ReleaseAssetMeta[];
-        };
+        const rawJson = (await apiRes.json()) as GitHubReleasePayload | GitHubReleasePayload[];
+        const data = selectLatestReleaseForPlatform(rawJson, platform);
+        if (!data) {
+          return {
+            currentVersion: cleanCurrent,
+            latestVersion: cleanCurrent,
+            tagName: `v${cleanCurrent}`,
+            hasUpdate: false,
+            releaseNotes: "",
+            releaseUrl: APP_RELEASES_PAGE_URL,
+            publishedAt: null,
+            assetName: null,
+            downloadUrl: null,
+            assetSize: null,
+            source: "github-api",
+          };
+        }
         const rawTag = typeof data.tag_name === "string" ? data.tag_name.trim() : "";
         const latestVersion = normalizeVersion(rawTag);
         if (latestVersion) {
@@ -375,11 +473,26 @@ export async function fetchLatestReleaseInfo({
 
       const location = webRes.headers.get("location") || "";
       const redirectTarget = location ? new URL(location, probeUrl).toString() : webRes.url || "";
-      const tagMatch = redirectTarget.match(/\/releases\/tag\/(v?[^/?#]+)/i);
+      const tagMatch = redirectTarget.match(/\/releases\/tag\/([^/?#]+)/i);
       if (tagMatch?.[1]) {
         const rawTag = decodeURIComponent(tagMatch[1]).trim();
         const latestVersion = normalizeVersion(rawTag);
         if (latestVersion) {
+          if (!doesReleaseMatchPlatform({ tag_name: rawTag }, platform)) {
+            return {
+              currentVersion: cleanCurrent,
+              latestVersion: cleanCurrent,
+              tagName: `v${cleanCurrent}`,
+              hasUpdate: false,
+              releaseNotes: "",
+              releaseUrl: APP_RELEASES_PAGE_URL,
+              publishedAt: null,
+              assetName: null,
+              downloadUrl: null,
+              assetSize: null,
+              source: "github-redirect",
+            };
+          }
           const fallbackAsset = buildDirectAssetFallbackUrl(rawTag, platform, arch);
           return {
             currentVersion: cleanCurrent,

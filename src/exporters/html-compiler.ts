@@ -7,6 +7,11 @@ import type {
   WorkbenchDocument,
   WorkbenchUnit,
 } from "@/core/contracts/document-ast";
+import {
+  formatFlowTextForMath,
+  normalizeLatexSyntax,
+  normalizeUnicodeMathDiacritics,
+} from "@/core/engine/flow-math";
 import { computeDiagramLayout } from "@/workbench-ui/dagre-layout";
 
 function escapeHtml(raw: string): string {
@@ -21,7 +26,7 @@ function escapeHtml(raw: string): string {
 function renderInlineMath(text: string): string {
   const escaped = escapeHtml(text);
   // Render inline $...$ spans using KaTeX when possible
-  return escaped.replace(/\$([^$\n]{1,160})\$/g, (_full, expr: string) => {
+  return escaped.replace(/\$([^$\n]{1,600})\$/g, (_full, expr: string) => {
     try {
       const unescaped = expr
         .replace(/&lt;/g, "<")
@@ -29,8 +34,9 @@ function renderInlineMath(text: string): string {
         .replace(/&amp;/g, "&")
         .replace(/&#39;/g, "'")
         .replace(/&quot;/g, '"');
-      const rendered = katex.renderToString(unescaped, { throwOnError: false, displayMode: false });
-      return `<span class="inline-math" data-tex="${escapeHtml(unescaped)}">${rendered}</span>`;
+      const normalized = normalizeLatexSyntax(unescaped);
+      const rendered = katex.renderToString(normalized, { throwOnError: false, displayMode: false });
+      return `<span class="inline-math" data-tex="${escapeHtml(normalized)}">${rendered}</span>`;
     } catch {
       return `<code>${expr}</code>`;
     }
@@ -269,12 +275,13 @@ function renderUnitHtml(
 
   const formulaHtml = (unit.formulas ?? [])
     .map((f) => {
-      const katexHtml = f.latex
-        ? katex.renderToString(f.latex, { throwOnError: false, displayMode: true })
+      const normalizedBlock = f.latex ? normalizeUnicodeMathDiacritics(f.latex) : "";
+      const katexHtml = normalizedBlock
+        ? katex.renderToString(normalizedBlock, { throwOnError: false, displayMode: true })
         : "";
-      const texAttr = f.latex ? ` data-tex="${escapeHtml(f.latex)}"` : "";
+      const texAttr = normalizedBlock ? ` data-tex="${escapeHtml(normalizedBlock)}"` : "";
       const flowHtml = f.flowText
-        ? `<div class="flow-chip"><b>${escapeHtml(f.flowLabel ?? "FLOW")}:</b> ${escapeHtml(f.flowText)}</div>`
+        ? `<div class="flow-chip"><b>${escapeHtml(f.flowLabel ?? "FLOW")}:</b> ${renderInlineMath(formatFlowTextForMath(f.flowText))}</div>`
         : "";
       return `<div class="formula-box"${texAttr}>${katexHtml}${flowHtml}</div>`;
     })

@@ -338,11 +338,17 @@ const ProximitySidebar = ({
   const mouseY = useMotionValue(Infinity);
   const shouldReduceMotion = useReducedMotion();
   const dashRefs = useRef(new Map<string, HTMLButtonElement>());
+  const trackRef = useRef<HTMLDivElement>(null);
   const pointerInside = useRef(false);
+  const draggingRef = useRef(false);
+  const dragStartY = useRef(0);
+  const dragMovedRef = useRef(false);
+  const suppressClickRef = useRef(false);
   const resetTimer = useRef<number | null>(null);
   const [activeId, setActiveId] = useState(sections[0]?.id);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [scrollPercent, setScrollPercent] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const [detectedKinds, setDetectedKinds] = useState<Record<string, SectionKind>>({});
 
   const sectionIds = useMemo(
@@ -536,17 +542,77 @@ const ProximitySidebar = ({
       )}
     >
       <div
+        ref={trackRef}
         data-testid="proximity-sidebar-track"
         className={cn(
-          "pointer-events-auto flex flex-col px-2 py-2",
+          "pointer-events-auto touch-none flex flex-col px-2 py-2",
+          isDragging ? "cursor-grabbing" : "cursor-grab",
           side === "right" ? "items-end" : "items-start"
         )}
+        onPointerDown={(event) => {
+          if (typeof event.button === "number" && event.button !== 0) return;
+          draggingRef.current = true;
+          dragStartY.current = event.clientY;
+          dragMovedRef.current = false;
+        }}
         onPointerMove={(event) => {
           clearPendingReset();
           pointerInside.current = true;
           mouseY.set(event.clientY);
+
+          if (!draggingRef.current || !trackRef.current) return;
+          if (!dragMovedRef.current) {
+            if (Math.abs(event.clientY - dragStartY.current) < 4) return;
+            dragMovedRef.current = true;
+            setIsDragging(true);
+            try {
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+            } catch {
+              // Ignore in jsdom or synthetic pointer environments
+            }
+          }
+          const rect = trackRef.current.getBoundingClientRect();
+          if (rect.height <= 0) return;
+          const ratio = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+          const maxScroll = Math.max(
+            0,
+            document.documentElement.scrollHeight - window.innerHeight
+          );
+          window.scrollTo({
+            top: ratio * maxScroll,
+            behavior: "auto",
+          });
+        }}
+        onPointerUp={(event) => {
+          if (!draggingRef.current) return;
+          draggingRef.current = false;
+          setIsDragging(false);
+          if (dragMovedRef.current) {
+            suppressClickRef.current = true;
+            window.setTimeout(() => {
+              suppressClickRef.current = false;
+            }, 0);
+          }
+          dragMovedRef.current = false;
+          try {
+            event.currentTarget.releasePointerCapture?.(event.pointerId);
+          } catch {
+            // Ignore if pointer capture is not active
+          }
+        }}
+        onPointerCancel={() => {
+          draggingRef.current = false;
+          dragMovedRef.current = false;
+          setIsDragging(false);
+        }}
+        onClickCapture={(event) => {
+          if (!suppressClickRef.current) return;
+          suppressClickRef.current = false;
+          event.stopPropagation();
+          event.preventDefault();
         }}
         onPointerLeave={() => {
+          if (draggingRef.current) return;
           pointerInside.current = false;
           setHoveredId(null);
           mouseY.set(Infinity);

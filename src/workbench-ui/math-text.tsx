@@ -2,6 +2,11 @@
 
 import React from "react";
 import katex from "katex";
+import {
+  formatFlowTextForMath,
+  normalizeLatexSyntax,
+  normalizeUnicodeMathDiacritics,
+} from "@/core/engine/flow-math";
 
 interface MathTextProps {
   text: string;
@@ -28,23 +33,50 @@ const EPISTEMIC_TAG_STYLES: Record<string, string> = {
   "[易误解]": "bg-amber-100 text-amber-950 border-amber-300",
 };
 
+const EPISTEMIC_WITH_DETAIL_RE =
+  /(\[(?:原文明示|分析推断|原文未说明|原文不一致|易误解)(?:[，,:：\s][^\]]{1,80})?\])/g;
+
 function renderPlainSegmentWithTags(segment: string, keyPrefix: string): React.ReactNode {
-  const tagRegex = /(\[(?:原文明示|分析推断|原文未说明|原文不一致|易误解)\])/g;
-  if (!tagRegex.test(segment)) {
+  EPISTEMIC_WITH_DETAIL_RE.lastIndex = 0;
+  if (!EPISTEMIC_WITH_DETAIL_RE.test(segment)) {
     return segment;
   }
-  const tokens = segment.split(/(\[(?:原文明示|分析推断|原文未说明|原文不一致|易误解)\])/g);
+  const tokens = segment.split(
+    /(\[(?:原文明示|分析推断|原文未说明|原文不一致|易误解)(?:[，,:：\s][^\]]{1,80})?\])/g
+  );
   return tokens.map((tok, i) => {
-    const badgeCls = EPISTEMIC_TAG_STYLES[tok];
-    if (!badgeCls) return tok;
-    return (
-      <span
-        key={`${keyPrefix}-tag-${i}`}
-        className={`inline-block font-mono text-[10.5px] font-semibold px-1.5 py-0.2 rounded border mx-0.5 align-baseline ${badgeCls}`}
-      >
-        {tok}
-      </span>
+    if (!tok) return null;
+    const exactCls = EPISTEMIC_TAG_STYLES[tok];
+    if (exactCls) {
+      return (
+        <span
+          key={`${keyPrefix}-tag-${i}`}
+          className={`inline-block font-mono text-[10.5px] font-semibold px-1.5 py-0.2 rounded border mx-0.5 align-baseline ${exactCls}`}
+        >
+          {tok}
+        </span>
+      );
+    }
+    const detailMatch = tok.match(
+      /^\[(原文明示|分析推断|原文未说明|原文不一致|易误解)[，,:：\s]+([^\]]+)\]$/
     );
+    if (detailMatch) {
+      const [, prefix, detail] = detailMatch;
+      const prefixCls = EPISTEMIC_TAG_STYLES[`[${prefix}]`];
+      if (prefixCls) {
+        return (
+          <React.Fragment key={`${keyPrefix}-tagd-${i}`}>
+            <span
+              className={`inline-block font-mono text-[10.5px] font-semibold px-1.5 py-0.2 rounded border mr-1.5 align-baseline ${prefixCls}`}
+            >
+              [{prefix}]
+            </span>
+            <span className="text-[11.5px] opacity-75 mr-1.5">({detail.trim()})</span>
+          </React.Fragment>
+        );
+      }
+    }
+    return tok;
   });
 }
 
@@ -57,7 +89,7 @@ export function MathText({ text, className }: MathTextProps) {
   }
 
   const parts: React.ReactNode[] = [];
-  const regex = /\$([^$\n]{1,180})\$/g;
+  const regex = /\$([^$\n]{1,600})\$/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   let keyCounter = 0;
@@ -66,11 +98,12 @@ export function MathText({ text, className }: MathTextProps) {
     if (match.index > lastIndex) {
       parts.push(renderPlainSegmentWithTags(text.slice(lastIndex, match.index), `seg-${keyCounter}`));
     }
-    const html = renderKatexSafe(match[1], false);
+    const normalizedTex = normalizeLatexSyntax(match[1]);
+    const html = renderKatexSafe(normalizedTex, false);
     parts.push(
       <span
         key={`math-${keyCounter++}`}
-        data-tex={match[1]}
+        data-tex={normalizedTex}
         className="inline-math align-baseline"
         dangerouslySetInnerHTML={{ __html: html }}
       />
@@ -85,17 +118,27 @@ export function MathText({ text, className }: MathTextProps) {
   return <span className={className}>{parts}</span>;
 }
 
+/**
+ * Renders `TENSOR / STATE FLOW` descriptions, automatically converting bare ASCII/Unicode
+ * tensor expressions (`x_t[H,W,3]`, `L_distill = ||P(F_t) - G_t||^2`, `ẑ_{t+1:t+H}`) into crisp KaTeX.
+ */
+export function FlowMathText({ text, className }: MathTextProps) {
+  const formatted = React.useMemo(() => formatFlowTextForMath(text), [text]);
+  return <MathText text={formatted} className={className} />;
+}
+
 interface DisplayFormulaProps {
   latex: string;
 }
 
 export function DisplayFormula({ latex }: DisplayFormulaProps) {
   if (!latex.trim()) return null;
-  const html = renderKatexSafe(latex, true);
+  const normalized = normalizeUnicodeMathDiacritics(latex);
+  const html = renderKatexSafe(normalized, true);
   return (
     <div
-      data-tex={latex}
-      className="overflow-x-auto py-1 text-slate-900"
+      data-tex={normalized}
+      className="prism-display-formula overflow-x-auto py-1 text-slate-900"
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

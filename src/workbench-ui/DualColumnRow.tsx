@@ -14,7 +14,7 @@ import type {
 import type { PureLangMode } from "@/store/workbench-store";
 import { StreamingResponse } from "@/components/ui/streaming-response";
 import { CodeViewer } from "./code-viewer";
-import { DisplayFormula, MathText } from "./math-text";
+import { DisplayFormula, FlowMathText, MathText } from "./math-text";
 
 const PROSE_HIGHLIGHT_MAP: Record<ColorSlot, string> = {
   yellow: "bg-amber-200/70 rounded px-0.5",
@@ -432,11 +432,11 @@ export function DualColumnRow({
               >
                 {f.latex && <DisplayFormula latex={f.latex} />}
                 {f.flowText && (
-                  <div className="font-mono text-xs text-[#1a2744] mt-1 break-all">
-                    <span className="font-semibold mr-1.5">
+                  <div className="text-[12.5px] leading-relaxed text-[#1a2744] mt-1 break-words">
+                    <span className="font-mono text-[11px] font-semibold tracking-wide mr-1.5 opacity-85">
                       {f.flowLabel ?? "TENSOR / STATE FLOW"}:
                     </span>
-                    {f.flowText}
+                    <FlowMathText text={f.flowText} />
                   </div>
                 )}
               </div>
@@ -534,11 +534,16 @@ export function DualColumnRow({
 
         {showSecondary && unit.secondaryBlockText && (() => {
           const isFailedTranslation = isFailedTranslationUnit(unit);
+          const isPendingStreaming = unit.secondaryBlockText.startsWith("⏳ 正在按阅读顺序");
           const busy = isRetryingUnit || isRetryingAllFailed;
           return (
             <div
-              className={`prism-quote-block mt-4 rounded-r-xl px-4 py-3 text-sm leading-relaxed italic font-serif ${
-                isFailedTranslation ? "border-l-rose-400 bg-rose-50/70" : ""
+              className={`prism-quote-block mt-4 rounded-r-xl px-4 py-3 leading-relaxed ${
+                isFailedTranslation
+                  ? "border-l-rose-400 bg-rose-50/70 text-sm italic font-serif"
+                  : isPendingStreaming
+                    ? "text-xs not-italic font-sans opacity-75 animate-pulse"
+                    : "text-sm italic font-serif"
               }`}
             >
               <MathText text={unit.secondaryBlockText} />

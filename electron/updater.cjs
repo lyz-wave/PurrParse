@@ -29,7 +29,65 @@ const TRUSTED_EXTERNAL_PREFIXES = [
 function normalizeVersion(raw) {
   return String(raw || "")
     .trim()
-    .replace(/^v+/i, "");
+    .replace(/^(?:win(?:dows)?|mac(?:os)?|darwin|linux)[-_]?/i, "")
+    .replace(/^v+/i, "")
+    .replace(/-(?:win(?:dows)?|mac(?:os)?|darwin|linux)$/i, "");
+}
+
+function parseTagTargetPlatforms(tagName) {
+  const tag = String(tagName || "").trim().toLowerCase();
+  if (!tag) return null;
+  if (/^(?:win|windows)[-_]?v?\d/.test(tag) || /-(?:win|windows)(?:$|[.-])/.test(tag)) {
+    return ["win32"];
+  }
+  if (/^(?:mac|macos|darwin)[-_]?v?\d/.test(tag) || /-(?:mac|macos|darwin)(?:$|[.-])/.test(tag)) {
+    return ["darwin"];
+  }
+  if (/^(?:linux)[-_]?v?\d/.test(tag) || /-linux(?:$|[.-])/.test(tag)) {
+    return ["linux"];
+  }
+  return null;
+}
+
+function detectReleaseTargetPlatforms(release) {
+  const fromTag = parseTagTargetPlatforms(release && release.tag_name ? release.tag_name : "");
+  if (fromTag) return fromTag;
+
+  const assets = Array.isArray(release && release.assets) ? release.assets : [];
+  if (assets.length === 0) return null;
+
+  const hasPatch = assets.some((a) => /^purrparse-patch-.*\.tar\.gz$/i.test(String((a && a.name) || "")));
+  if (hasPatch) return null;
+
+  const hasMac = assets.some((a) => /\.dmg$/i.test(String((a && a.name) || "")));
+  const hasWin = assets.some((a) => /\.exe$/i.test(String((a && a.name) || "")));
+  if (hasMac && !hasWin) return ["darwin"];
+  if (hasWin && !hasMac) return ["win32"];
+  return null;
+}
+
+function doesReleaseMatchPlatform(release, platform) {
+  if (!platform || platform === "web") return true;
+  const targets = detectReleaseTargetPlatforms(release);
+  if (!targets || targets.length === 0) return true;
+  return targets.includes(platform);
+}
+
+function selectLatestReleaseForPlatform(payload, platform) {
+  const list = Array.isArray(payload) ? payload : [payload];
+  const candidates = list.filter(
+    (rel) =>
+      rel &&
+      rel.draft !== true &&
+      typeof rel.tag_name === "string" &&
+      Boolean(normalizeVersion(rel.tag_name)) &&
+      doesReleaseMatchPlatform(rel, platform)
+  );
+  if (candidates.length === 0) return null;
+
+  return candidates.sort((a, b) =>
+    compareSemver(normalizeVersion(b.tag_name || ""), normalizeVersion(a.tag_name || ""))
+  )[0];
 }
 
 function parseSemver(raw) {
@@ -143,8 +201,11 @@ function isTrustedExternalUrl(url) {
   return typeof url === "string" && TRUSTED_EXTERNAL_PREFIXES.some((prefix) => url.startsWith(prefix));
 }
 
-function isPatchManifestCompatible(localMeta, manifest, latestVersion) {
+function isPatchManifestCompatible(localMeta, manifest, latestVersion, platform = process.platform) {
   if (!localMeta || !manifest || typeof manifest !== "object") return false;
+  if (Array.isArray(manifest.platforms) && manifest.platforms.length > 0 && platform) {
+    if (!manifest.platforms.includes(platform)) return false;
+  }
   const targetVer = normalizeVersion(manifest.version);
   const expectedVer = normalizeVersion(latestVersion);
   if (!targetVer || !expectedVer || targetVer !== expectedVer) return false;
@@ -203,14 +264,14 @@ function buildDirectAssetFallbackUrl(tagName, platform, arch) {
 }
 
 async function fetchLatestReleaseInfo(currentVersion, platform, arch, timeoutMs = 8000) {
-  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.11";
+  const cleanCurrent = normalizeVersion(currentVersion) || "1.1.12";
 
-  // Tier 1: GitHub REST API
+  // Tier 1: GitHub REST API (/releases?per_page=10 so win-only / mac-only tags don't collide)
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const apiRes = await fetch(`https://api.github.com/repos/${APP_GITHUB_REPO}/releases/latest`, {
+      const apiRes = await fetch(`https://api.github.com/repos/${APP_GITHUB_REPO}/releases?per_page=10`, {
         method: "GET",
         headers: {
           Accept: "application/vnd.github+json",
@@ -219,7 +280,24 @@ async function fetchLatestReleaseInfo(currentVersion, platform, arch, timeoutMs 
         signal: controller.signal,
       });
       if (apiRes.ok) {
-        const data = await apiRes.json();
+        const rawJson = await apiRes.json();
+        const data = selectLatestReleaseForPlatform(rawJson, platform);
+        if (!data) {
+          return {
+            currentVersion: cleanCurrent,
+            latestVersion: cleanCurrent,
+            tagName: `v${cleanCurrent}`,
+            hasUpdate: false,
+            releaseNotes: "",
+            releaseUrl: APP_RELEASES_PAGE_URL,
+            publishedAt: null,
+            assetName: null,
+            downloadUrl: null,
+            assetSize: null,
+            source: "github-api",
+            _assets: [],
+          };
+        }
         const rawTag = typeof data.tag_name === "string" ? data.tag_name.trim() : "";
         const latestVersion = normalizeVersion(rawTag);
         if (latestVersion) {
@@ -276,11 +354,26 @@ async function fetchLatestReleaseInfo(currentVersion, platform, arch, timeoutMs 
 
       const location = webRes.headers.get("location") || "";
       const redirectTarget = location ? new URL(location, probeUrl).toString() : webRes.url || "";
-      const tagMatch = redirectTarget.match(/\/releases\/tag\/(v?[^/?#]+)/i);
+      const tagMatch = redirectTarget.match(/\/releases\/tag\/([^/?#]+)/i);
       if (tagMatch && tagMatch[1]) {
         const rawTag = decodeURIComponent(tagMatch[1]).trim();
         const latestVersion = normalizeVersion(rawTag);
         if (latestVersion) {
+          if (!doesReleaseMatchPlatform({ tag_name: rawTag }, platform)) {
+            return {
+              currentVersion: cleanCurrent,
+              latestVersion: cleanCurrent,
+              tagName: `v${cleanCurrent}`,
+              hasUpdate: false,
+              releaseNotes: "",
+              releaseUrl: APP_RELEASES_PAGE_URL,
+              publishedAt: null,
+              assetName: null,
+              downloadUrl: null,
+              assetSize: null,
+              source: "github-redirect",
+            };
+          }
           const fallbackAsset = buildDirectAssetFallbackUrl(rawTag, platform, arch);
           return {
             currentVersion: cleanCurrent,
@@ -361,7 +454,7 @@ function createDesktopUpdater({
   getActiveVersion,
 }) {
   const currentVersion = normalizeVersion(
-    (typeof getActiveVersion === "function" ? getActiveVersion() : "") || app.getVersion() || "1.1.11"
+    (typeof getActiveVersion === "function" ? getActiveVersion() : "") || app.getVersion() || "1.1.12"
   );
   const capabilities = detectInstallCapabilities(app);
   const platform = process.platform;
@@ -454,7 +547,7 @@ function createDesktopUpdater({
           info.tagName,
           currentVersion
         );
-        if (isPatchManifestCompatible(localMeta, manifest, info.latestVersion)) {
+        if (isPatchManifestCompatible(localMeta, manifest, info.latestVersion, platform)) {
           const patchAssetMeta = Array.isArray(info._assets)
             ? info._assets.find(
                 (item) => item && item.name && item.name.toLowerCase() === manifest.patchAsset.toLowerCase()
@@ -943,6 +1036,9 @@ function createDesktopUpdater({
 module.exports = {
   createDesktopUpdater,
   normalizeVersion,
+  parseTagTargetPlatforms,
+  detectReleaseTargetPlatforms,
+  doesReleaseMatchPlatform,
   compareSemver,
   selectPlatformAsset,
   isPatchManifestCompatible,

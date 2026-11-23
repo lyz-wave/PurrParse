@@ -33,6 +33,7 @@ export type AnalysisStreamEvent =
       badges: string[];
       topMentalModel: TopMentalModel;
       sections: SectionAnchor[];
+      readyForReading?: boolean;
       partialDocument?: WorkbenchDocument;
     }
   | {
@@ -40,6 +41,7 @@ export type AnalysisStreamEvent =
       batchIndex: number;
       totalBatches: number;
       units: WorkbenchUnit[];
+      readyForReading?: boolean;
       partialDocument?: WorkbenchDocument;
     }
   | {
@@ -476,21 +478,26 @@ export async function* runChunkedAnalysis(
 
   const generator = options.generator;
   const speedMode: AnalysisSpeedMode = options.speedMode ?? "balanced";
-  const batchSize = options.batchSize ?? (speedMode === "fast" ? 8 : 6);
-  const concurrency = Math.max(
-    1,
-    Math.min(6, options.concurrency ?? (speedMode === "fast" ? 5 : 4))
-  );
+  const hasExplicitScheduleOverride =
+    typeof options.batchSize === "number" || typeof options.concurrency === "number";
+
+  // Replace heuristic-mode hints ("请在设置填入 API Key") on queued pending units so if a reader
+  // enters after the opening 5 paragraphs finish, later streaming paragraphs clearly show pending status.
+  liveDoc.units = liveDoc.units.map((u) => ({
+    ...u,
+    secondaryBlockText:
+      u.secondaryBlockText && u.secondaryBlockText.trim().length > 0
+        ? "⏳ 正在按阅读顺序逐段翻译生成本段译文与批注，请稍候..."
+        : "",
+  }));
 
   // Step 1: Global Mental Model & Section Skeleton
   throwIfAborted(options.abortSignal);
   yield {
     type: "status",
     phase: "top-model",
-    message: `[PHASE 1/3] 正在构建全局认知脚手架、拓扑图与术语词典（${
-      speedMode === "fast" ? "极速" : "标准"
-    } · ${concurrency}路并发）...`,
-    progress: 18,
+    message: `[PHASE 1/3] 正在构建全局认知脚手架，随后优先译妥前 5 段再开放阅读...`,
+    progress: 14,
   };
 
   const topOutput = await generator.generate({
@@ -514,6 +521,8 @@ export async function* runChunkedAnalysis(
   liveDoc.sections = topOutput.sections.length > 0 ? topOutput.sections : liveDoc.sections;
   liveDoc.updatedAt = new Date().toISOString();
 
+  // Keep `readyForReading: false` in the default front-5-ready pipeline until the opening 5 paragraphs finish,
+  // preventing the reader from clicking into untranslated paragraphs at index 0.
   yield {
     type: "top-model",
     title: liveDoc.title,
@@ -521,36 +530,54 @@ export async function* runChunkedAnalysis(
     badges: liveDoc.badges,
     topMentalModel: liveDoc.topMentalModel,
     sections: liveDoc.sections,
+    readyForReading: hasExplicitScheduleOverride,
     partialDocument: { ...liveDoc, units: [...liveDoc.units] },
   };
 
-  // Step 2 & 3 Combined Parallel Worker Pool (Batches + Bottom Workbench)
-  const batches = chunkArray(sourceUnits, batchSize);
+  // Step 2 & 3 Reader-First Head-5 + Sequential Tail Pipeline:
+  // - Default `balanced`:
+  //   1) Phase A translates the first 5 units upfront as safe micro-batches (<= 3 units each, e.g. 3 + 2)
+  //      before unlocking reading (`readyForReading: true`), avoiding 4096-token silent relay truncation
+  //      while ensuring all first 5 paragraphs are 100% ready the moment the reader can enter.
+  //   2) Phase B streams remaining paragraphs strictly 1-by-1 sequentially (concurrency=1), then bottom workbench,
+  //      keeping failure rate near zero while letting readers smoothly read paragraphs 1..5 uninterrupted.
+  // - Default `fast`: still guarantees first 5 units (3 + 2) finish before unlocking reading, then runs 2-unit tail micro-batches.
+  // - Explicit `batchSize` / `concurrency` overrides continue to be honored directly.
+  let batches: SourceUnit[][];
+  let headBatchCount: number;
+  let tailConcurrency: number;
+  let runBottomAfterTail: boolean;
+
+  if (hasExplicitScheduleOverride) {
+    const explicitBatchSize = options.batchSize ?? (speedMode === "fast" ? 3 : 2);
+    batches = chunkArray(sourceUnits, explicitBatchSize);
+    tailConcurrency = Math.max(1, Math.min(4, options.concurrency ?? 2));
+    headBatchCount = tailConcurrency >= 3 ? 0 : Math.min(batches.length, batches.length >= 3 ? 2 : 1);
+    runBottomAfterTail = false;
+  } else {
+    const headCount = Math.min(5, sourceUnits.length);
+    const headUnits = sourceUnits.slice(0, headCount);
+    const headBatches = chunkArray(headUnits, 3);
+    const tailUnits = sourceUnits.slice(headCount);
+    const tailBatchSize = speedMode === "fast" ? 2 : 1;
+    const tailBatches = chunkArray(tailUnits, tailBatchSize);
+    batches = [...headBatches, ...tailBatches];
+    headBatchCount = headBatches.length;
+    tailConcurrency = speedMode === "fast" ? 2 : 1;
+    runBottomAfterTail = speedMode !== "fast";
+  }
+
   const allSectionIds = Array.from(new Set(sourceUnits.map((u) => u.sectionId)));
   const baselineById = new Map(liveDoc.units.map((u) => [u.id, u]));
   const hydratedById = new Map<string, WorkbenchUnit>();
 
   const totalWorkUnits = batches.length + 1;
-  const activeWorkers = Math.min(concurrency, totalWorkUnits);
-  const queue = createAsyncEventQueue<AnalysisStreamEvent>();
+  const remainingBatches = batches.slice(headBatchCount);
+  const activeWorkers = Math.min(
+    tailConcurrency,
+    Math.max(1, remainingBatches.length + (runBottomAfterTail ? 0 : 1))
+  );
 
-  yield {
-    type: "status",
-    phase: "batch",
-    message: `[PHASE 2/3] 正在并行拆解 ${batches.length} 批正文 + 底部复盘（${activeWorkers} 路并发）...`,
-    progress: 26,
-  };
-
-  type PoolTask =
-    | { kind: "batch"; index: number; batch: SourceUnit[] }
-    | { kind: "bottom" };
-
-  const workItems: PoolTask[] = [
-    ...batches.map((batch, index): PoolTask => ({ kind: "batch", index, batch })),
-    { kind: "bottom" },
-  ];
-
-  let cursor = 0;
   let completedBatches = 0;
   let completedBottom = false;
   let failedBatchCount = 0;
@@ -587,8 +614,8 @@ export async function* runChunkedAnalysis(
         throw err;
       }
 
-      await waitWithAbort(1200, options.abortSignal);
-      if (targetBatch.length >= 4) {
+      await waitWithAbort(450, options.abortSignal);
+      if (targetBatch.length >= 2) {
         const mid = Math.ceil(targetBatch.length / 2);
         const halves = [targetBatch.slice(0, mid), targetBatch.slice(mid)];
         const combined: WorkbenchUnit[] = [];
@@ -597,10 +624,9 @@ export async function* runChunkedAnalysis(
 
         for (let hIdx = 0; hIdx < halves.length; hIdx++) {
           const half = halves[hIdx];
+          const partLabel = `${baseLabel}_part${hIdx + 1}`;
           try {
-            combined.push(
-              ...(await hydrateBatchDirect(half, `${baseLabel}_part${hIdx + 1}`))
-            );
+            combined.push(...(await hydrateBatchDirect(half, partLabel)));
           } catch (halfErr) {
             if (
               options.abortSignal?.aborted ||
@@ -608,6 +634,37 @@ export async function* runChunkedAnalysis(
               isNonRetryableAuthOrQuotaError(halfErr)
             ) {
               throw halfErr;
+            }
+            if (half.length >= 2) {
+              for (let uIdx = 0; uIdx < half.length; uIdx++) {
+                const singleSrc = half[uIdx];
+                try {
+                  await waitWithAbort(300, options.abortSignal);
+                  combined.push(
+                    ...(await hydrateBatchDirect([singleSrc], `${partLabel}_u${uIdx + 1}`))
+                  );
+                } catch (singleErr) {
+                  if (
+                    options.abortSignal?.aborted ||
+                    (singleErr instanceof Error && singleErr.name === "AbortError") ||
+                    isNonRetryableAuthOrQuotaError(singleErr)
+                  ) {
+                    throw singleErr;
+                  }
+                  halfFailed = true;
+                  lastHalfErr = singleErr;
+                  const reason =
+                    singleErr instanceof Error && singleErr.message
+                      ? singleErr.message.slice(0, 60)
+                      : "请求超时或异常";
+                  const base = baselineById.get(singleSrc.id)!;
+                  combined.push({
+                    ...base,
+                    secondaryBlockText: `该批次翻译生成失败（${reason}），已保留原文与基础结构（可稍后重试该篇）。`,
+                  });
+                }
+              }
+              continue;
             }
             halfFailed = true;
             lastHalfErr = halfErr;
@@ -639,7 +696,8 @@ export async function* runChunkedAnalysis(
       } catch (retryErr) {
         if (
           options.abortSignal?.aborted ||
-          (retryErr instanceof Error && retryErr.name === "AbortError")
+          (retryErr instanceof Error && retryErr.name === "AbortError") ||
+          isNonRetryableAuthOrQuotaError(retryErr)
         ) {
           throw retryErr;
         }
@@ -648,7 +706,179 @@ export async function* runChunkedAnalysis(
     }
   };
 
-  const workers = Array.from({ length: activeWorkers }, async () => {
+  const applyBatchOutcomeAndEmit = async (
+    batch: SourceUnit[],
+    batchNum: number,
+    pushEvent: (ev: AnalysisStreamEvent) => void,
+    isHeadSequential: boolean
+  ) => {
+    try {
+      const outcome = await hydrateBatchWithRetry(batch, batchNum);
+      if (outcome.units.length === 0 && outcome.anyFailed) {
+        throw outcome.err;
+      }
+      if (outcome.anyFailed) {
+        failedBatchCount += 1;
+        if (!firstBatchError && outcome.err) firstBatchError = outcome.err;
+        if (failedBatchCount === batches.length) {
+          throw outcome.err ?? new Error("全部批次正文解析失败");
+        }
+      }
+
+      for (const u of outcome.units) {
+        hydratedById.set(u.id, u);
+      }
+      liveDoc.units = sourceUnits.map(
+        (src) => hydratedById.get(src.id) ?? baselineById.get(src.id)!
+      );
+      liveDoc.updatedAt = new Date().toISOString();
+      completedBatches += 1;
+
+      const headUnlocked = hasExplicitScheduleOverride || completedBatches >= headBatchCount;
+      pushEvent({
+        type: "unit-batch",
+        batchIndex: completedBatches,
+        totalBatches: batches.length,
+        units: outcome.units,
+        readyForReading: headUnlocked,
+        partialDocument: { ...liveDoc, units: [...liveDoc.units] },
+      });
+      pushEvent({
+        type: "status",
+        phase: "batch",
+        message: isHeadSequential
+          ? headUnlocked
+            ? `[PHASE 2/3] 前 ${hydratedById.size} 段已完整译妥 · 可点进从头阅读（已完成 ${completedBatches}/${batches.length}）...`
+            : `[PHASE 2/3] 正在预译开篇前段（已译妥 ${hydratedById.size}/${batches.slice(0, headBatchCount).reduce((s, b) => s + b.length, 0)} 段）...`
+          : `[PHASE 2/3] 后续逐段生成中（${hydratedById.size}/${sourceUnits.length} 段已译妥）...`,
+        progress: computePoolProgress(),
+      });
+    } catch (err) {
+      if (options.abortSignal?.aborted || (err instanceof Error && err.name === "AbortError")) {
+        throw err;
+      }
+      failedBatchCount += 1;
+      if (!firstBatchError) firstBatchError = err;
+
+      if (batches.length === 1 || failedBatchCount === batches.length) {
+        throw err;
+      }
+
+      const shortReason =
+        err instanceof Error && err.message ? err.message.slice(0, 60) : "请求超时或异常";
+      const fallbackUnits: WorkbenchUnit[] = batch.map((src) => {
+        const base = baselineById.get(src.id)!;
+        return {
+          ...base,
+          secondaryBlockText: `该批次翻译生成失败（${shortReason}），已保留原文与基础结构（可稍后重试该篇）。`,
+        };
+      });
+      for (const u of fallbackUnits) {
+        hydratedById.set(u.id, u);
+      }
+      liveDoc.units = sourceUnits.map(
+        (src) => hydratedById.get(src.id) ?? baselineById.get(src.id)!
+      );
+      liveDoc.updatedAt = new Date().toISOString();
+      completedBatches += 1;
+
+      const headUnlocked = hasExplicitScheduleOverride || completedBatches >= headBatchCount;
+      pushEvent({
+        type: "unit-batch",
+        batchIndex: completedBatches,
+        totalBatches: batches.length,
+        units: fallbackUnits,
+        readyForReading: headUnlocked,
+        partialDocument: { ...liveDoc, units: [...liveDoc.units] },
+      });
+    }
+  };
+
+  const headUnitsCount = batches.slice(0, headBatchCount).reduce((s, b) => s + b.length, 0);
+  if (headBatchCount > 0) {
+    yield {
+      type: "status",
+      phase: "batch",
+      message: `[PHASE 2/3] 正在优先精译前 ${headUnitsCount} 段以备无缝开读（完成后即可点进阅读）...`,
+      progress: 22,
+    };
+  }
+
+  // Phase A: Translate opening head units upfront before unlocking reader entry
+  for (let i = 0; i < headBatchCount; i++) {
+    throwIfAborted(options.abortSignal);
+    const headEvents: AnalysisStreamEvent[] = [];
+    await applyBatchOutcomeAndEmit(
+      batches[i],
+      i + 1,
+      (ev) => headEvents.push(ev),
+      true
+    );
+    for (const ev of headEvents) {
+      yield ev;
+    }
+  }
+
+  const runBottomAndEmit = async (pushEvent: (ev: AnalysisStreamEvent) => void) => {
+    const bottomOutput = await generator.generate({
+      prompt: appendPromptModeHint(
+        plugin.buildPrompts.bottomWorkbenchPrompt(
+          docTitle,
+          sourceUnits,
+          topOutput,
+          promptContext
+        ),
+        "bottom",
+        speedMode
+      ),
+      schema: plugin.schemas.bottomWorkbench,
+      schemaName: `${plugin.id}_bottom_workbench`,
+      abortSignal: options.abortSignal,
+      maxTokens: 8192,
+    });
+
+    liveDoc.bottomTitle = bottomOutput.bottomTitle;
+    liveDoc.bottomSubtitle = bottomOutput.bottomSubtitle;
+    liveDoc.bottomBlocks = bottomOutput.bottomBlocks;
+    liveDoc.updatedAt = new Date().toISOString();
+    completedBottom = true;
+
+    pushEvent({
+      type: "bottom",
+      bottomTitle: bottomOutput.bottomTitle,
+      bottomSubtitle: bottomOutput.bottomSubtitle,
+      bottomBlocks: bottomOutput.bottomBlocks,
+      partialDocument: { ...liveDoc, units: [...liveDoc.units] },
+    });
+    pushEvent({
+      type: "status",
+      phase: "bottom",
+      message:
+        completedBatches >= batches.length
+          ? "[PHASE 3/3] 底部复盘与论证矩阵已生成..."
+          : `[PHASE 2/3] 底部复盘已就绪，已完成 ${completedBatches}/${batches.length} 批正文...`,
+      progress: computePoolProgress(),
+    });
+  };
+
+  // Phase B: Remaining tail paragraphs (strict sequential 1-by-1 in balanced mode, 2-unit micro-batches in fast mode)
+  const queue = createAsyncEventQueue<AnalysisStreamEvent>();
+  type PoolTask =
+    | { kind: "batch"; index: number; batch: SourceUnit[] }
+    | { kind: "bottom" };
+
+  const workItems: PoolTask[] = [
+    ...remainingBatches.map(
+      (batch, offset): PoolTask => ({ kind: "batch", index: headBatchCount + offset, batch })
+    ),
+    ...(runBottomAfterTail ? [] : [{ kind: "bottom" } as const]),
+  ];
+
+  let cursor = 0;
+  const workers = Array.from({ length: activeWorkers }, async (_, workerIdx) => {
+    if (workerIdx > 0 && !hasExplicitScheduleOverride) {
+      await waitWithAbort(workerIdx * 35, options.abortSignal);
+    }
     while (true) {
       throwIfAborted(options.abortSignal);
       const nextIdx = cursor++;
@@ -656,120 +886,14 @@ export async function* runChunkedAnalysis(
       const task = workItems[nextIdx];
 
       if (task.kind === "batch") {
-        try {
-          const outcome = await hydrateBatchWithRetry(task.batch, task.index + 1);
-          if (outcome.units.length === 0 && outcome.anyFailed) {
-            throw outcome.err;
-          }
-          if (outcome.anyFailed) {
-            failedBatchCount += 1;
-            if (!firstBatchError && outcome.err) firstBatchError = outcome.err;
-            if (failedBatchCount === batches.length) {
-              throw outcome.err ?? new Error("全部批次正文解析失败");
-            }
-          }
-
-          for (const u of outcome.units) {
-            hydratedById.set(u.id, u);
-          }
-          liveDoc.units = sourceUnits.map(
-            (src) => hydratedById.get(src.id) ?? baselineById.get(src.id)!
-          );
-          liveDoc.updatedAt = new Date().toISOString();
-          completedBatches += 1;
-
-          queue.push({
-            type: "unit-batch",
-            batchIndex: completedBatches,
-            totalBatches: batches.length,
-            units: outcome.units,
-            partialDocument: { ...liveDoc, units: [...liveDoc.units] },
-          });
-          queue.push({
-            type: "status",
-            phase: "batch",
-            message: `[PHASE 2/3] 已并行完成 ${completedBatches}/${batches.length} 批正文${
-              completedBottom ? " + 底部复盘" : ""
-            }...`,
-            progress: computePoolProgress(),
-          });
-        } catch (err) {
-          if (options.abortSignal?.aborted || (err instanceof Error && err.name === "AbortError")) {
-            throw err;
-          }
-          failedBatchCount += 1;
-          if (!firstBatchError) firstBatchError = err;
-
-          if (batches.length === 1 || failedBatchCount === batches.length) {
-            throw err;
-          }
-
-          const shortReason =
-            err instanceof Error && err.message ? err.message.slice(0, 60) : "请求超时或异常";
-          const fallbackUnits: WorkbenchUnit[] = task.batch.map((src) => {
-            const base = baselineById.get(src.id)!;
-            return {
-              ...base,
-              secondaryBlockText: `该批次翻译生成失败（${shortReason}），已保留原文与基础结构（可稍后重试该篇）。`,
-            };
-          });
-          for (const u of fallbackUnits) {
-            hydratedById.set(u.id, u);
-          }
-          liveDoc.units = sourceUnits.map(
-            (src) => hydratedById.get(src.id) ?? baselineById.get(src.id)!
-          );
-          liveDoc.updatedAt = new Date().toISOString();
-          completedBatches += 1;
-
-          queue.push({
-            type: "unit-batch",
-            batchIndex: completedBatches,
-            totalBatches: batches.length,
-            units: fallbackUnits,
-            partialDocument: { ...liveDoc, units: [...liveDoc.units] },
-          });
-        }
+        await applyBatchOutcomeAndEmit(
+          task.batch,
+          task.index + 1,
+          (ev) => queue.push(ev),
+          false
+        );
       } else {
-        const bottomOutput = await generator.generate({
-          prompt: appendPromptModeHint(
-            plugin.buildPrompts.bottomWorkbenchPrompt(
-              docTitle,
-              sourceUnits,
-              topOutput,
-              promptContext
-            ),
-            "bottom",
-            speedMode
-          ),
-          schema: plugin.schemas.bottomWorkbench,
-          schemaName: `${plugin.id}_bottom_workbench`,
-          abortSignal: options.abortSignal,
-          maxTokens: 8192,
-        });
-
-        liveDoc.bottomTitle = bottomOutput.bottomTitle;
-        liveDoc.bottomSubtitle = bottomOutput.bottomSubtitle;
-        liveDoc.bottomBlocks = bottomOutput.bottomBlocks;
-        liveDoc.updatedAt = new Date().toISOString();
-        completedBottom = true;
-
-        queue.push({
-          type: "bottom",
-          bottomTitle: bottomOutput.bottomTitle,
-          bottomSubtitle: bottomOutput.bottomSubtitle,
-          bottomBlocks: bottomOutput.bottomBlocks,
-          partialDocument: { ...liveDoc, units: [...liveDoc.units] },
-        });
-        queue.push({
-          type: "status",
-          phase: "bottom",
-          message:
-            completedBatches >= batches.length
-              ? "[PHASE 3/3] 底部复盘与论证矩阵已生成..."
-              : `[PHASE 2/3] 底部复盘已就绪，已完成 ${completedBatches}/${batches.length} 批正文...`,
-          progress: computePoolProgress(),
-        });
+        await runBottomAndEmit((ev) => queue.push(ev));
       }
     }
   });
@@ -789,6 +913,16 @@ export async function* runChunkedAnalysis(
 
   for await (const ev of queue) {
     yield ev;
+  }
+
+  throwIfAborted(options.abortSignal);
+
+  if (runBottomAfterTail) {
+    const bottomEvents: AnalysisStreamEvent[] = [];
+    await runBottomAndEmit((ev) => bottomEvents.push(ev));
+    for (const ev of bottomEvents) {
+      yield ev;
+    }
   }
 
   throwIfAborted(options.abortSignal);

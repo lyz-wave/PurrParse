@@ -4,12 +4,24 @@ on:
   push:
     tags:
       - "v*"
+      - "win-v*"
+      - "mac-v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v1.1.11)"
+        description: "Release tag name (e.g. v1.1.12, win-v1.1.12, mac-v1.1.12)"
         required: true
-        default: "v1.1.11"
+        default: "v1.1.12"
+      target_os:
+        description: "Target OS build scope (auto infers from tag prefix/suffix win-/mac-)"
+        type: choice
+        required: true
+        default: "auto"
+        options:
+          - auto
+          - all
+          - win
+          - mac
 
 permissions:
   contents: write
@@ -20,17 +32,57 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      build_mac: ${{ steps.meta.outputs.build_mac }}
+      build_win: ${{ steps.meta.outputs.build_win }}
+      target_platforms: ${{ steps.meta.outputs.target_platforms }}
+      is_platform_only: ${{ steps.meta.outputs.is_platform_only }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Resolve release tag
+      - name: Resolve release tag & platform scope
         id: meta
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ github.event.inputs.tag }}"
+            DISPATCH_OS="${{ github.event.inputs.target_os }}"
           else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            TAG="${GITHUB_REF_NAME}"
+            DISPATCH_OS="auto"
+          fi
+
+          SCOPE="$DISPATCH_OS"
+          if [[ "$SCOPE" == "auto" ]]; then
+            LOWER_TAG=$(echo "$TAG" | tr '[:upper:]' '[:lower:]')
+            if [[ "$LOWER_TAG" =~ ^win[-_]?v?[0-9] ]] || [[ "$LOWER_TAG" =~ -(win|windows)([.-]|$) ]]; then
+              SCOPE="win"
+            elif [[ "$LOWER_TAG" =~ ^mac(os)?[-_]?v?[0-9] ]] || [[ "$LOWER_TAG" =~ -(mac|macos|darwin)([.-]|$) ]]; then
+              SCOPE="mac"
+            else
+              SCOPE="all"
+            fi
+          fi
+
+          CLEAN_VER=$(echo "$TAG" | sed -E 's/^(win|windows|mac|macos|darwin|linux)[-_]?//I; s/^v+//I; s/-(win|windows|mac|macos|darwin|linux)$//I')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$CLEAN_VER" >> "$GITHUB_OUTPUT"
+
+          if [[ "$SCOPE" == "win" ]]; then
+            echo "build_mac=false" >> "$GITHUB_OUTPUT"
+            echo "build_win=true" >> "$GITHUB_OUTPUT"
+            echo "target_platforms=win32" >> "$GITHUB_OUTPUT"
+            echo "is_platform_only=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$SCOPE" == "mac" ]]; then
+            echo "build_mac=true" >> "$GITHUB_OUTPUT"
+            echo "build_win=false" >> "$GITHUB_OUTPUT"
+            echo "target_platforms=darwin" >> "$GITHUB_OUTPUT"
+            echo "is_platform_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build_mac=true" >> "$GITHUB_OUTPUT"
+            echo "build_win=true" >> "$GITHUB_OUTPUT"
+            echo "target_platforms=darwin,win32" >> "$GITHUB_OUTPUT"
+            echo "is_platform_only=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create or update Release notes
@@ -38,7 +90,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
+          IS_PLATFORM_ONLY="${{ steps.meta.outputs.is_platform_only }}"
           cat <<'EOF' > /tmp/release-notes.md
+          ### v1.1.12 主要更新（前 5 段优先译妥 · 隐藏 Win 右侧白条 · 公式排版修复 · 分端独立更新）
+
+          - **「前 5 段预译 + 第 6 段起严格逐段」防打断生成节奏**（[chunk-orchestrator.ts](src/core/engine/chunk-orchestrator.ts)、[llm-adapters.ts](src/core/engine/llm-adapters.ts)）：
+            - 全局骨架完成时先锁定阅读入口，开篇前 5 段以稳健微批（`3 + 2`）完整译妥后才解锁「进入阅读」，确保点进文章时开篇 5 段立即可读，不再被占位框打断。
+            - 默认标准模式下，第 6 段起切换为 `concurrency = 1` 逐段（1 段/次）顺次生成，大幅降低限流与断连报错率，并将多段批次超时放宽至 65 秒、单段微批保留 50 秒响应。
+          - **隐藏并融合 Windows 最右侧古典滚动条**（[globals.css](src/app/globals.css)、[proximity-sidebar.tsx](src/components/ui/proximity-sidebar.tsx)）：
+            - 消除 Windows 主界面右侧白色古典 Win32 滚动条，仅在内部弹窗与抽屉保留 6px 细圆角滚动条。
+            - 右侧 `ProximitySidebar` 刻度尺支持按住左键上下拖动平滑滚动，同时完整保留鼠标单击跳转章节刻度功能。
+          - **`TENSOR / STATE FLOW` 与行内公式排版修复**（[flow-math.ts](src/core/engine/flow-math.ts)、[math-text.tsx](src/workbench-ui/math-text.tsx)、[DualColumnRow.tsx](src/workbench-ui/DualColumnRow.tsx)、[html-compiler.ts](src/exporters/html-compiler.ts)）：
+            - 自动将流向卡片与已保存文档中的裸文本公式（如 `x_t[H,W,3]`、`L_distill = ||P(F_t) - G_t||^2`、`d_z << D`、`ẑ_{t+1:t+H}`、`√d_k`）规范化为标准 KaTeX 公式（同时避免误伤 `QK^T`、`QW_i^Q`、`d_{\text{model}}` 与源码状态链），并美化 `[分析推断]` 等认识论角标徽章。
+          - **极简重构「新建解析」弹窗**（[IngestionStudioModal.tsx](src/workbench-ui/IngestionStudioModal.tsx)）：
+            - 移除编号步骤与冗余文字，收拢为分段模式条 + 单一输入卡片 + 嵌入式 `+ 上传文件` 按钮 + 折叠式可选自定义背景，支持三套主题变量与 `Esc` 快捷关闭。
+          - **支持按操作系统分端独立更新**（[updater.cjs](electron/updater.cjs)、[app-updater.ts](src/core/engine/app-updater.ts)、[release-desktop.yml](.github/workflows/release-desktop.yml)、[landing/app.js](landing/app.js)）：
+            - 客户端升级与官网下载切换为检索 `/releases?per_page=10`，支持 `win-v*` 与 `mac-v*` 独占标签与产物隔离；待双端均升级至 `v1.1.12` 后，后续单端修复将不再迫使另一端同步更新。
+          - **注**：由于本次升级同时包含桌面端更新器逻辑调整（`shellHash` 变更），从 `v1.1.11` 及更早版本升级时将在应用内自动回退下载 `v1.1.12` 完整安装包完成一次性升级。
+
           ### v1.1.11 主要更新（Windows 一体化无边框顶栏重构）
 
           - **Windows 版采用一体化 Window Controls Overlay 顶栏设计**：
@@ -103,14 +172,23 @@ jobs:
           - **Windows（`x64` / `ARM64`）**：若安装或运行前触发 Microsoft Defender SmartScreen 安全拦截，点击「**更多信息**」→「**仍要运行**」即可。已包含 `.next/standalone` 依赖树扁平化（移除超深 `.pnpm` 嵌套路径并解决 `MAX_PATH` 限制）及启动环境诊断增强。
           EOF
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --notes-file /tmp/release-notes.md
+            if [[ "$IS_PLATFORM_ONLY" == "true" ]]; then
+              gh release edit "$TAG" --notes-file /tmp/release-notes.md
+            else
+              gh release edit "$TAG" --notes-file /tmp/release-notes.md --latest
+            fi
           else
-            gh release create "$TAG" --title "PurrParse $TAG" --notes-file /tmp/release-notes.md
+            LATEST_FLAG="--latest"
+            if [[ "$IS_PLATFORM_ONLY" == "true" ]]; then
+              LATEST_FLAG="--latest=false"
+            fi
+            gh release create "$TAG" --title "PurrParse $TAG" --notes-file /tmp/release-notes.md "$LATEST_FLAG"
           fi
 
   build-desktop:
     name: Build ${{ matrix.label }}
     needs: prepare-release
+    if: (matrix.platform == 'mac' && needs.prepare-release.outputs.build_mac == 'true') || (matrix.platform == 'win' && needs.prepare-release.outputs.build_win == 'true')
     strategy:
       fail-fast: false
       matrix:
@@ -150,6 +228,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Align package version from release tag if needed
+        shell: bash
+        run: |
+          RELEASE_VER="${{ needs.prepare-release.outputs.version }}"
+          if [[ "$RELEASE_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            CURRENT_VER=$(node -p "require('./package.json').version")
+            if [[ "$CURRENT_VER" != "$RELEASE_VER" ]]; then
+              npm pkg set "version=$RELEASE_VER"
+            fi
+          fi
+
       - name: Run typecheck & tests
         run: |
           npm run typecheck
@@ -158,6 +247,7 @@ jobs:
       - name: Package PurrParse Desktop (${{ matrix.label }})
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          PURRPARSE_TARGET_PLATFORMS: ${{ needs.prepare-release.outputs.target_platforms }}
         shell: bash
         run: |
           npm run build

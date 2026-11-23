@@ -127,6 +127,98 @@ describe("app-updater core engine", () => {
     );
   });
 
+  it("skips Windows-only releases on macOS and skips macOS-only releases on Windows", async () => {
+    const updaterMod = await import("../../../electron/updater.cjs");
+    const { isPatchManifestCompatible, doesReleaseMatchPlatform } = updaterMod;
+
+    expect(doesReleaseMatchPlatform({ tag_name: "win-v1.1.12" }, "darwin")).toBe(false);
+    expect(doesReleaseMatchPlatform({ tag_name: "win-v1.1.12" }, "win32")).toBe(true);
+    expect(doesReleaseMatchPlatform({ tag_name: "mac-v1.1.13" }, "win32")).toBe(false);
+    expect(doesReleaseMatchPlatform({ tag_name: "mac-v1.1.13" }, "darwin")).toBe(true);
+    expect(
+      doesReleaseMatchPlatform(
+        {
+          tag_name: "v1.1.12",
+          assets: [
+            { name: "PurrParse-1.1.12-win-x64-Setup.exe", browser_download_url: "https://example.com/win.exe" },
+          ],
+        },
+        "darwin"
+      )
+    ).toBe(false);
+
+    const mixedReleases = [
+      {
+        tag_name: "win-v1.1.12",
+        body: "Windows-only scrollbar fix",
+        html_url: `${APP_RELEASES_PAGE_URL}/tag/win-v1.1.12`,
+        assets: [
+          {
+            name: "PurrParse-1.1.12-win-x64-Setup.exe",
+            browser_download_url: `${APP_RELEASES_PAGE_URL}/download/win-v1.1.12/PurrParse-1.1.12-win-x64-Setup.exe`,
+            size: 118_000_000,
+          },
+        ],
+      },
+      {
+        tag_name: "v1.1.11",
+        body: "Shared release",
+        html_url: `${APP_RELEASES_PAGE_URL}/tag/v1.1.11`,
+        assets: [
+          {
+            name: "PurrParse-1.1.11-mac-arm64.dmg",
+            browser_download_url: `${APP_RELEASES_PAGE_URL}/download/v1.1.11/PurrParse-1.1.11-mac-arm64.dmg`,
+            size: 138_000_000,
+          },
+        ],
+      },
+    ];
+
+    const macResult = await fetchLatestReleaseInfo({
+      currentVersion: "1.1.11",
+      platform: "darwin",
+      arch: "arm64",
+      fetchImpl: (async () =>
+        new Response(JSON.stringify(mixedReleases), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })) as unknown as typeof fetch,
+    });
+    expect(macResult.hasUpdate).toBe(false);
+    expect(macResult.latestVersion).toBe("1.1.11");
+
+    const winResult = await fetchLatestReleaseInfo({
+      currentVersion: "1.1.11",
+      platform: "win32",
+      arch: "x64",
+      fetchImpl: (async () =>
+        new Response(JSON.stringify(mixedReleases), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })) as unknown as typeof fetch,
+    });
+    expect(winResult.hasUpdate).toBe(true);
+    expect(winResult.latestVersion).toBe("1.1.12");
+    expect(winResult.tagName).toBe("win-v1.1.12");
+    expect(winResult.assetName).toBe("PurrParse-1.1.12-win-x64-Setup.exe");
+
+    expect(
+      isPatchManifestCompatible(
+        { appVersion: "1.1.11", depsHash: "deps1234", shellHash: "shell5678" },
+        {
+          version: "1.1.12",
+          platforms: ["win32"],
+          depsHash: "deps1234",
+          shellHash: "shell5678",
+          patchAsset: "PurrParse-patch-1.1.12.tar.gz",
+          patchSha256: "deadbeef",
+        },
+        "1.1.12",
+        "darwin"
+      )
+    ).toBe(false);
+  });
+
   it("throws a clear Chinese error if both GitHub API and redirect probe fail", async () => {
     const fetchMock = vi
       .fn()
@@ -239,7 +331,7 @@ describe("Desktop Dual-Track Incremental Patch Updater", () => {
 
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/releases/latest")) {
+        if (url.includes("api.github.com/repos/") && url.includes("/releases")) {
           return new Response(
             JSON.stringify({
               tag_name: "v1.1.7",

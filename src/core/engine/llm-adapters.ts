@@ -27,6 +27,7 @@ export interface StructuredObjectGenerator {
     schemaName: string;
     abortSignal?: AbortSignal;
     maxTokens?: number;
+    timeoutMs?: number;
   }): Promise<T>;
 }
 
@@ -1215,15 +1216,24 @@ export function createAiSdkObjectGenerator(config: LLMConfig): StructuredObjectG
       schemaName,
       abortSignal,
       maxTokens = 8192,
+      timeoutMs,
     }: {
       prompt: string;
       schema: z.ZodType<T, z.ZodTypeDef, unknown>;
       schemaName: string;
       abortSignal?: AbortSignal;
       maxTokens?: number;
+      timeoutMs?: number;
     }): Promise<T> {
+      const effectiveTimeoutMs =
+        timeoutMs ??
+        (schemaName.includes("_batch_") || schemaName.includes("_retry") ? 65_000 : 80_000);
+
       const executeSingleAttempt = async (): Promise<T> => {
-        const { signal: callSignal, cleanup } = createCallAbortSignal(abortSignal, 120_000);
+        const { signal: callSignal, cleanup } = createCallAbortSignal(
+          abortSignal,
+          effectiveTimeoutMs
+        );
         try {
           // For OpenAI-compatible proxies/relays, stream first (with JSON Schema in system prompt) to avoid
           // reverse-proxy non-streaming idle timeouts and `stream: false` empty choices aggregator bugs.
@@ -1251,7 +1261,7 @@ export function createAiSdkObjectGenerator(config: LLMConfig): StructuredObjectG
 
               const { signal: objSignal, cleanup: cleanupObj } = createCallAbortSignal(
                 abortSignal,
-                120_000
+                effectiveTimeoutMs
               );
               try {
                 const result = await generateObject({
@@ -1285,7 +1295,7 @@ export function createAiSdkObjectGenerator(config: LLMConfig): StructuredObjectG
               prompt,
               temperature: 0.2,
               maxTokens,
-              maxRetries: 1,
+              maxRetries: 0,
               abortSignal: callSignal,
               mode: "auto",
             });
@@ -1303,7 +1313,7 @@ export function createAiSdkObjectGenerator(config: LLMConfig): StructuredObjectG
 
             const { signal: fallbackSignal, cleanup: cleanupFallback } = createCallAbortSignal(
               abortSignal,
-              120_000
+              effectiveTimeoutMs
             );
             try {
               return await generateViaStreamText({
@@ -1337,7 +1347,7 @@ export function createAiSdkObjectGenerator(config: LLMConfig): StructuredObjectG
             throw err;
           }
           const backoffMs =
-            (attempt === 1 ? 900 : 2200) + Math.floor(Math.random() * 600);
+            (attempt === 1 ? 450 : 1100) + Math.floor(Math.random() * 350);
           console.warn(
             `[llm-gateway] transient error on attempt ${attempt}/${maxTransientAttempts}, retrying in ${backoffMs}ms:`,
             err instanceof Error ? err.message : String(err)

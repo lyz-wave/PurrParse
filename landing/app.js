@@ -1201,7 +1201,7 @@ function initDesktopDownloads() {
   const REPO = 'lyz-wave/PurrParse';
   const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
   const SOURCE_ZIP_URL = `https://github.com/${REPO}/archive/refs/heads/main.zip`;
-  const DEFAULT_VERSION = 'v1.1.11';
+  const DEFAULT_VERSION = 'v1.1.12';
 
   const TARGETS = [
     {
@@ -1211,7 +1211,7 @@ function initDesktopDownloads() {
       longLabel: 'Mac Apple Silicon (ARM64)',
       ext: 'dmg',
       pattern: /(?:mac[-_.]?arm64|arm64)\.dmg$/i,
-      defaultAsset: 'PurrParse-1.1.11-mac-arm64.dmg',
+      defaultAsset: 'PurrParse-1.1.12-mac-arm64.dmg',
     },
     {
       id: 'mac-x64',
@@ -1220,7 +1220,7 @@ function initDesktopDownloads() {
       longLabel: 'Mac Intel (x64)',
       ext: 'dmg',
       pattern: /(?:mac[-_.]?x64|x64)\.dmg$/i,
-      defaultAsset: 'PurrParse-1.1.11-mac-x64.dmg',
+      defaultAsset: 'PurrParse-1.1.12-mac-x64.dmg',
     },
     {
       id: 'win-x64',
@@ -1229,7 +1229,7 @@ function initDesktopDownloads() {
       longLabel: 'Windows x64',
       ext: 'exe',
       pattern: /(?:win[-_.]?x64|x64).*\.exe$/i,
-      defaultAsset: 'PurrParse-1.1.11-win-x64-Setup.exe',
+      defaultAsset: 'PurrParse-1.1.12-win-x64-Setup.exe',
     },
     {
       id: 'win-arm64',
@@ -1238,7 +1238,7 @@ function initDesktopDownloads() {
       longLabel: 'Windows ARM64',
       ext: 'exe',
       pattern: /(?:win[-_.]?arm64|arm64).*\.exe$/i,
-      defaultAsset: 'PurrParse-1.1.11-win-arm64-Setup.exe',
+      defaultAsset: 'PurrParse-1.1.12-win-arm64-Setup.exe',
     },
   ];
 
@@ -1318,9 +1318,10 @@ function initDesktopDownloads() {
       const primaryLabel = wrap.querySelector('[data-dl-primary-label]');
       const menu = wrap.querySelector('[data-dl-menu]');
 
+      const activeTag = (activeAsset && activeAsset.tag) || releaseTag;
       if (primary) {
         primary.href = activeAsset?.available ? activeAsset.url : RELEASES_PAGE;
-        primary.title = `当前识别为 ${activeTarget.longLabel}（${releaseTag}），鼠标悬停可切换其他平台版本`;
+        primary.title = `当前识别为 ${activeTarget.longLabel}（${activeTag}），鼠标悬停可切换其他平台版本`;
       }
       if (primaryLabel) {
         primaryLabel.textContent =
@@ -1454,31 +1455,38 @@ function initDesktopDownloads() {
       .catch(() => {});
   }
 
-  // Sync live GitHub Releases latest tag & real downloadable assets
-  fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+  // Sync per-OS latest GitHub Releases so Windows-only or macOS-only tags resolve independently
+  fetch(`https://api.github.com/repos/${REPO}/releases?per_page=10`, {
     cache: 'no-store',
     headers: { Accept: 'application/vnd.github+json' },
   })
     .then(res => (res.ok ? res.json() : null))
-    .then(rel => {
-      if (!rel || !Array.isArray(rel.assets)) return;
-      if (rel.tag_name) releaseTag = String(rel.tag_name);
+    .then(list => {
+      if (!Array.isArray(list)) return;
+      const published = list.filter(rel => rel && rel.draft !== true && Array.isArray(rel.assets));
+      if (!published.length) return;
+      if (published[0]?.tag_name) releaseTag = String(published[0].tag_name);
+
       TARGETS.forEach(target => {
-        const matched = rel.assets.find(asset => target.pattern.test(String(asset?.name || '')));
-        if (matched && matched.browser_download_url) {
-          const mb = Math.round(Number(matched.size || 0) / (1024 * 1024));
-          resolvedAssets[target.id] = {
-            url: String(matched.browser_download_url),
-            available: true,
-            sizeLabel: mb > 0 ? `${mb} MB` : `.${target.ext}`,
-          };
-        } else {
-          resolvedAssets[target.id] = {
-            url: String(rel.html_url || RELEASES_PAGE),
-            available: false,
-            sizeLabel: 'Release 页',
-          };
+        for (const rel of published) {
+          const matched = rel.assets.find(asset => target.pattern.test(String(asset?.name || '')));
+          if (matched && matched.browser_download_url) {
+            const mb = Math.round(Number(matched.size || 0) / (1024 * 1024));
+            resolvedAssets[target.id] = {
+              tag: String(rel.tag_name || releaseTag),
+              url: String(matched.browser_download_url),
+              available: true,
+              sizeLabel: mb > 0 ? `${mb} MB` : `.${target.ext}`,
+            };
+            return;
+          }
         }
+        resolvedAssets[target.id] = {
+          tag: releaseTag,
+          url: String(published[0]?.html_url || RELEASES_PAGE),
+          available: false,
+          sizeLabel: 'Release 页',
+        };
       });
       renderPickers();
     })

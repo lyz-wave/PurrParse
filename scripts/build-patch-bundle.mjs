@@ -40,8 +40,14 @@ execFileSync("tar", ["-czf", patchPath, "-C", STANDALONE_DIR, ...entries], {
 const patchBuf = fs.readFileSync(patchPath);
 const patchSha256 = crypto.createHash("sha256").update(patchBuf).digest("hex");
 
+const targetPlatforms = String(process.env.PURRPARSE_TARGET_PLATFORMS || "")
+  .split(",")
+  .map((item) => item.trim())
+  .filter((item) => item === "darwin" || item === "win32" || item === "linux");
+
 const manifest = {
   version: meta.appVersion,
+  ...(targetPlatforms.length > 0 ? { platforms: targetPlatforms } : {}),
   depsHash: meta.depsHash,
   shellHash: meta.shellHash,
   patchAsset,

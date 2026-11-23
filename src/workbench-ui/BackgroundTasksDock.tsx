@@ -371,7 +371,7 @@ export function BackgroundTasksDock({
                               : "prism-on-dark bg-[#1a2744] text-amber-200 hover:bg-[#24365c]"
                           }`}
                         >
-                          边看边生成 →
+                          进入阅读（后续生成中） →
                         </button>
                       )}
 

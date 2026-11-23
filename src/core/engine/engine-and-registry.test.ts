@@ -469,8 +469,8 @@ describe("ChunkedAnalysisEngine & PluginRegistry Extensibility", () => {
       // drain
     }
 
-    // 9 units with fast batchSize=8 -> 2 batches
-    expect(batchSchemas).toHaveLength(2);
+    // 9 units with fast mode -> 3 + 2 opening micro-batches (first 5 ready before unlock) + 2 + 2 tail batches = 4 batch calls
+    expect(batchSchemas).toHaveLength(4);
     expect(seenPrompts.some((p) => p.includes("极速精简模式"))).toBe(true);
 
     const abortController = new AbortController();
@@ -1231,5 +1231,96 @@ describe("LLM Adapter Gateway Normalization", () => {
     ]);
     expect(heuristicDoc.units[0].secondaryBlockText).toBe("");
     expect(heuristicDoc.units[1].secondaryBlockText).not.toContain("[核心句提炼]");
+  });
+
+  it("generates all first 5 units before unlocking readyForReading, then streams tail units strictly 1-by-1 sequentially before bottom", async () => {
+    const lifecycleLog: string[] = [];
+    const batchUnitCounts: number[] = [];
+    const orderedGenerator: StructuredObjectGenerator = {
+      async generate<T>({ schemaName, prompt }: { schemaName: string; prompt: string }): Promise<T> {
+        lifecycleLog.push(`start:${schemaName}`);
+        await new Promise((r) => setTimeout(r, 10));
+        lifecycleLog.push(`end:${schemaName}`);
+        if (schemaName.includes("_batch_")) {
+          const ids = Array.from(prompt.matchAll(/unitId:\s*(\S+)/g)).map((m) => m[1]);
+          batchUnitCounts.push(ids.length);
+          return {
+            units: ids.map((id) => ({
+              unitId: id,
+              weight: "core" as const,
+              tldr: `TLDR_${id}`,
+              secondaryBlockText: `已翻译_${id}`,
+              highlights: [],
+              notes: [{ body: `Note_${id}` }],
+            })),
+          } as T;
+        }
+        if (schemaName.endsWith("_top_mental_model")) {
+          return {
+            title: "Head First Doc",
+            subtitle: "Sub",
+            badges: [],
+            globalContextSummary: "CTX",
+            topMentalModel: {
+              title: "00",
+              subtitle: "s",
+              cards: [{ tag: "T", body: "B" }],
+              diagram: { title: "D", hint: "H", nodes: [], edges: [] },
+              glossaryTitle: "G",
+              glossary: [],
+            },
+            sections: [{ id: "sec-1", navLabel: "1", title: "1. Intro", taskBadge: "T" }],
+          } as T;
+        }
+        return {
+          bottomTitle: "08",
+          bottomBlocks: [{ type: "statement-banner", tag: "DONE", body: "OK" }],
+        } as T;
+      },
+    };
+
+    const sevenParas = [
+      "1. Intro",
+      ...Array.from(
+        { length: 7 },
+        (_, i) =>
+          `Paragraph number ${i + 1} evaluates deep residual learning accuracy on ImageNet validation crops with standard scale augmentation and identity shortcut projections across convolutional layers.`
+      ),
+    ].join("\n\n");
+
+    const streamedBatchIndexes: number[] = [];
+    const topReadyFlags: Array<boolean | undefined> = [];
+    const batchReadyFlags: Array<boolean | undefined> = [];
+    for await (const ev of runChunkedAnalysis(
+      academicPaperPlugin,
+      { kind: "text", content: sevenParas },
+      { generator: orderedGenerator, speedMode: "balanced" }
+    )) {
+      if (ev.type === "top-model") {
+        topReadyFlags.push(ev.readyForReading);
+      } else if (ev.type === "unit-batch") {
+        streamedBatchIndexes.push(ev.batchIndex);
+        batchReadyFlags.push(ev.readyForReading);
+      }
+    }
+
+    // 7 units -> opening 5 translated safely as [3, 2] before readyForReading unlocks on batch 2,
+    // then unit 6 and unit 7 each generated individually 1-by-1 before bottom
+    expect(topReadyFlags).toEqual([false]);
+    expect(batchUnitCounts).toEqual([3, 2, 1, 1]);
+    expect(streamedBatchIndexes).toEqual([1, 2, 3, 4]);
+    expect(batchReadyFlags).toEqual([false, true, true, true]);
+    expect(lifecycleLog.indexOf("end:academic-paper_batch_1")).toBeLessThan(
+      lifecycleLog.indexOf("start:academic-paper_batch_2")
+    );
+    expect(lifecycleLog.indexOf("end:academic-paper_batch_2")).toBeLessThan(
+      lifecycleLog.indexOf("start:academic-paper_batch_3")
+    );
+    expect(lifecycleLog.indexOf("end:academic-paper_batch_3")).toBeLessThan(
+      lifecycleLog.indexOf("start:academic-paper_batch_4")
+    );
+    expect(lifecycleLog.indexOf("end:academic-paper_batch_4")).toBeLessThan(
+      lifecycleLog.indexOf("start:academic-paper_bottom_workbench")
+    );
   });
 });

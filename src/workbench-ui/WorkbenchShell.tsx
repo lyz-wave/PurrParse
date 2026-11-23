@@ -774,7 +774,7 @@ export function WorkbenchShell() {
 
       <aside
         aria-label="文章侧边进度指示"
-        className={`fixed top-1/2 -translate-y-1/2 right-1.5 z-30 pointer-events-none ${
+        className={`fixed top-1/2 -translate-y-1/2 right-0.5 z-30 pointer-events-none ${
           isPureMode ? "hidden lg:flex" : "hidden xl:flex"
         }`}
       >

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   getPanelGlassTextClasses,
   PanelGlassHeader,
@@ -53,8 +53,18 @@ export function IngestionStudioModal({
   const [userTopic, setUserTopic] = useState("");
   const [showCustomContext, setShowCustomContext] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const headerCls = getPanelGlassTextClasses(themeMode);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -178,29 +188,44 @@ export function IngestionStudioModal({
   };
 
   const isRunning = false;
+  const activeEngineLabel = llmConfig.apiKey.trim()
+    ? `${llmConfig.provider} · ${llmConfig.model}`
+    : "离线启发式引擎";
+  const remoteTabLabel = activePlugin.inputConfig.supportsRepoUrl
+    ? "GitHub 仓库"
+    : activePlugin.inputConfig.acceptedFileTypes?.includes(".srt")
+      ? "视频 / 网页链接"
+      : "arXiv / 链接";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[1px]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-[2px]"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isRunning) onClose();
+      }}
+    >
       <div
         role="dialog"
         aria-modal="true"
         aria-label="新建精读与拆解工作台"
-        className="w-full max-w-2xl rounded-2xl bg-[#faf8f5] border border-[#ddd6c7] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+        className="w-full max-w-xl rounded-2xl border shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+        style={{
+          backgroundColor: "var(--prism-surface, #fcf9f2)",
+          borderColor: "var(--prism-border, #d8ccb5)",
+          color: "var(--prism-ink, #1f242d)",
+        }}
       >
         <PanelGlassHeader
           testId="studio-modal-header"
           themeMode={themeMode}
           left={
-            <div>
-              <h2 className={`font-serif text-lg font-semibold ${headerCls.heading}`}>
-                新建精读 / 拆解工作台
+            <div className="flex items-baseline gap-2.5 flex-wrap">
+              <h2 className={`font-serif text-[17px] font-semibold tracking-tight ${headerCls.heading}`}>
+                新建解析
               </h2>
-              <p className={`text-xs ${headerCls.subtitle}`}>
-                当前模式引擎：
-                {llmConfig.apiKey.trim()
-                  ? ` 在线大模型 (${llmConfig.provider} · ${llmConfig.model})`
-                  : " 离线启发式引擎（无 API Key 亦可立刻体验）"}
-              </p>
+              <span className={`font-mono text-[11px] opacity-80 ${headerCls.subtitle}`}>
+                {activeEngineLabel}
+              </span>
             </div>
           }
           right={
@@ -208,19 +233,24 @@ export function IngestionStudioModal({
               type="button"
               disabled={isRunning}
               onClick={onClose}
-              className={`font-mono text-xs px-3 py-1 rounded-full cursor-pointer disabled:opacity-50 transition-colors whitespace-nowrap ${headerCls.ghostBtn}`}
+              aria-label="关闭"
+              className={`font-mono text-xs px-2.5 py-1 rounded-full cursor-pointer disabled:opacity-50 transition-colors whitespace-nowrap ${headerCls.ghostBtn}`}
             >
               关闭
             </button>
           }
         />
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto text-sm">
-          <div>
-            <label className="block font-mono text-xs font-semibold text-[#1a2744] mb-1.5">
-              1. 选择分析模式插件 (Plugin)
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 overflow-y-auto text-sm">
+          {/* Segmented Mode Selector */}
+          <div className="space-y-2">
+            <div
+              className="grid grid-cols-3 gap-1 rounded-xl p-1 border"
+              style={{
+                backgroundColor: "var(--prism-surface-muted, #e8dec9)",
+                borderColor: "var(--prism-border, #d8ccb5)",
+              }}
+            >
               {plugins.map((plugin) => {
                 const selected = plugin.id === activePlugin.id;
                 return (
@@ -237,133 +267,193 @@ export function IngestionStudioModal({
                       setSearchQuery("");
                       setActiveTab("text-or-file");
                     }}
-                    className={`text-left rounded-lg border p-3 transition-all cursor-pointer ${
+                    className={`rounded-lg px-2.5 py-2 text-center text-xs sm:text-[13px] font-medium transition-all cursor-pointer truncate ${
                       selected
-                        ? "bg-[#1a2744] text-white border-[#1a2744]"
-                        : "bg-white border-[#ddd6c7] hover:border-[#1a2744]/50 text-slate-800"
+                        ? "shadow-sm font-semibold"
+                        : "opacity-70 hover:opacity-100"
                     }`}
+                    style={
+                      selected
+                        ? {
+                            backgroundColor: "var(--prism-surface, #fcf9f2)",
+                            color: "var(--prism-heading, #1a2744)",
+                          }
+                        : {
+                            color: "var(--prism-ink, #1f242d)",
+                          }
+                    }
                   >
-                    <div className="font-mono text-[10.5px] opacity-80">{plugin.shortLabel}</div>
-                    <div className="font-serif font-semibold text-sm mt-0.5">{plugin.name}</div>
+                    {plugin.name}
                   </button>
                 );
               })}
             </div>
-            <p className="text-xs text-slate-600 mt-1.5">{activePlugin.description}</p>
             {autoSwitchedHint && (
-              <p className="text-xs font-mono text-amber-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1 mt-1.5">
+              <p className="text-[11px] font-mono text-amber-800 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-1.5">
                 {autoSwitchedHint}
               </p>
             )}
           </div>
 
-          <div>
-            <label className="block font-mono text-xs font-semibold text-[#1a2744] mb-1">
-              2. 工作台标题（可选，留空自动从 PDF / arXiv / 仓库 / 网页提取）
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              disabled={isRunning}
-              placeholder="例如：LoRA 原论文精读 / nanoid 源码拆解..."
-              className="w-full rounded-md border border-[#ddd6c7] bg-white px-3 py-2 text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="block font-mono text-xs font-semibold text-[#1a2744] mb-1.5">
-              3. 选择资料输入方式
-            </label>
-            <div className="flex flex-wrap gap-2 mb-3">
-              <button
-                type="button"
-                disabled={isRunning}
-                onClick={() => setActiveTab("text-or-file")}
-                className={`font-mono text-xs px-3 py-1.5 rounded-md border cursor-pointer ${
-                  activeTab === "text-or-file"
-                    ? "bg-[#1a2744] text-white border-[#1a2744]"
-                    : "bg-white text-slate-700 border-[#ddd6c7] hover:border-[#1a2744]/40"
-                }`}
-              >
-                粘贴正文 / 上传文件
-              </button>
-
-              {hasRemoteInput && (
+          {/* Unified Source Composer */}
+          <div
+            className="rounded-xl border overflow-hidden transition-colors"
+            style={{
+              backgroundColor: "var(--prism-surface-subtle, #f6f0e3)",
+              borderColor: "var(--prism-border, #d8ccb5)",
+            }}
+          >
+            <div
+              className="flex items-center justify-between gap-2 px-3 py-2 border-b"
+              style={{ borderColor: "var(--prism-border, #d8ccb5)" }}
+            >
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
                   disabled={isRunning}
-                  onClick={() => setActiveTab("remote-url")}
-                  className={`font-mono text-xs px-3 py-1.5 rounded-md border cursor-pointer ${
-                    activeTab === "remote-url"
-                      ? "bg-[#1a2744] text-white border-[#1a2744]"
-                      : "bg-white text-slate-700 border-[#ddd6c7] hover:border-[#1a2744]/40"
+                  onClick={() => setActiveTab("text-or-file")}
+                  className={`text-xs px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
+                    activeTab === "text-or-file"
+                      ? "font-semibold"
+                      : "opacity-65 hover:opacity-100"
                   }`}
+                  style={
+                    activeTab === "text-or-file"
+                      ? {
+                          backgroundColor: "var(--prism-heading, #1a2744)",
+                          color: "var(--prism-bg, #f1eadc)",
+                        }
+                      : undefined
+                  }
                 >
-                  {activePlugin.inputConfig.remoteUrlLabel || "arXiv / URL 链接直达"}
+                  文本 / 文件
                 </button>
-              )}
 
-              {hasSearchInput && (
-                <button
-                  type="button"
-                  disabled={isRunning}
-                  onClick={() => setActiveTab("agent-search")}
-                  className={`font-mono text-xs px-3 py-1.5 rounded-md border cursor-pointer ${
-                    activeTab === "agent-search"
-                      ? "bg-[#1a2744] text-white border-[#1a2744]"
-                      : "bg-white text-slate-700 border-[#ddd6c7] hover:border-[#1a2744]/40"
-                  }`}
-                >
-                  {activePlugin.inputConfig.searchLabel || "AI 联网调用工具搜索"}
-                </button>
-              )}
+                {hasRemoteInput && (
+                  <button
+                    type="button"
+                    disabled={isRunning}
+                    onClick={() => setActiveTab("remote-url")}
+                    className={`text-xs px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
+                      activeTab === "remote-url"
+                        ? "font-semibold"
+                        : "opacity-65 hover:opacity-100"
+                    }`}
+                    style={
+                      activeTab === "remote-url"
+                        ? {
+                            backgroundColor: "var(--prism-heading, #1a2744)",
+                            color: "var(--prism-bg, #f1eadc)",
+                          }
+                        : undefined
+                    }
+                  >
+                    {remoteTabLabel}
+                  </button>
+                )}
+
+                {hasSearchInput && (
+                  <button
+                    type="button"
+                    disabled={isRunning}
+                    onClick={() => setActiveTab("agent-search")}
+                    className={`text-xs px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
+                      activeTab === "agent-search"
+                        ? "font-semibold"
+                        : "opacity-65 hover:opacity-100"
+                    }`}
+                    style={
+                      activeTab === "agent-search"
+                        ? {
+                            backgroundColor: "var(--prism-heading, #1a2744)",
+                            color: "var(--prism-bg, #f1eadc)",
+                          }
+                        : undefined
+                    }
+                  >
+                    AI 搜索
+                  </button>
+                )}
+              </div>
             </div>
 
             {activeTab === "text-or-file" && (
-              <div className="space-y-3">
+              <div>
+                <textarea
+                  value={textInput}
+                  onChange={(e) => {
+                    const nextVal = e.target.value;
+                    setTextInput(nextVal);
+                    setUploadedPayload(null);
+                    maybeAutoSwitchVideoMode(nextVal);
+                  }}
+                  disabled={isRunning}
+                  rows={7}
+                  placeholder={activePlugin.inputConfig.placeholder}
+                  className="w-full bg-transparent px-3.5 py-3 text-[13px] leading-relaxed focus:outline-none resize-y"
+                  style={{ color: "var(--prism-ink, #1f242d)" }}
+                />
                 {activePlugin.inputConfig.supportsFileUpload && (
-                  <div>
-                    <label className="block font-mono text-xs text-slate-700 mb-1">
-                      上传文件 ({activePlugin.inputConfig.acceptedFileTypes})
-                    </label>
+                  <div
+                    className="flex items-center justify-between gap-2 px-3 py-2 border-t text-xs"
+                    style={{ borderColor: "var(--prism-border, #d8ccb5)" }}
+                  >
                     <input
+                      ref={fileInputRef}
                       type="file"
                       multiple={activePlugin.inputConfig.supportsRepoUrl}
                       accept={activePlugin.inputConfig.acceptedFileTypes}
                       disabled={isRunning}
                       onChange={handleFileChange}
-                      className="block w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border file:border-[#ddd6c7] file:bg-white file:text-xs file:font-mono hover:file:bg-slate-100"
+                      className="hidden"
                     />
-                    {uploadedLabel && (
-                      <p className="text-xs text-emerald-700 font-mono mt-1">{uploadedLabel}</p>
-                    )}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <button
+                        type="button"
+                        disabled={isRunning}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[11px] cursor-pointer transition-colors hover:opacity-85 shrink-0"
+                        style={{
+                          backgroundColor: "var(--prism-surface, #fcf9f2)",
+                          borderColor: "var(--prism-border, #d8ccb5)",
+                          color: "var(--prism-ink, #1f242d)",
+                        }}
+                      >
+                        <span aria-hidden="true">+</span>
+                        <span>上传文件</span>
+                      </button>
+                      {uploadedLabel ? (
+                        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-emerald-700 truncate">
+                          <span className="truncate">{uploadedLabel}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUploadedPayload(null);
+                              setUploadedLabel("");
+                              if (fileInputRef.current) fileInputRef.current.value = "";
+                            }}
+                            className="opacity-65 hover:opacity-100 cursor-pointer"
+                            aria-label="移除已上传文件"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ) : (
+                        <span
+                          className="font-mono text-[11px] truncate opacity-60"
+                          style={{ color: "var(--prism-ink-muted, #5a5347)" }}
+                        >
+                          {activePlugin.inputConfig.acceptedFileTypes}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
-
-                <div>
-                  <textarea
-                    value={textInput}
-                    onChange={(e) => {
-                      const nextVal = e.target.value;
-                      setTextInput(nextVal);
-                      setUploadedPayload(null);
-                      maybeAutoSwitchVideoMode(nextVal);
-                    }}
-                    disabled={isRunning}
-                    rows={6}
-                    placeholder={activePlugin.inputConfig.placeholder}
-                    className="w-full rounded-md border border-[#ddd6c7] bg-white px-3 py-2 text-xs font-mono"
-                  />
-                </div>
               </div>
             )}
 
             {activeTab === "remote-url" && hasRemoteInput && (
-              <div className="bg-white border border-[#ddd6c7] rounded-lg p-3.5 space-y-2">
-                <label className="block font-mono text-xs font-semibold text-[#1a2744]">
-                  {activePlugin.inputConfig.remoteUrlLabel || "源地址 / arXiv 编号"}
-                </label>
+              <div className="p-3.5 space-y-2">
                 <input
                   type="text"
                   value={remoteUrl}
@@ -373,20 +463,25 @@ export function IngestionStudioModal({
                     maybeAutoSwitchVideoMode(nextVal);
                   }}
                   disabled={isRunning}
-                  placeholder={activePlugin.inputConfig.remoteUrlPlaceholder || "https://..."}
-                  className="w-full rounded-md border border-[#ddd6c7] bg-[#fcfbf8] px-3 py-2 font-mono text-xs"
+                  placeholder={activePlugin.inputConfig.remoteUrlPlaceholder || "粘贴 URL 或 arXiv 编号..."}
+                  className="w-full rounded-lg border px-3 py-2.5 font-mono text-xs focus:outline-none"
+                  style={{
+                    backgroundColor: "var(--prism-surface, #fcf9f2)",
+                    borderColor: "var(--prism-border, #d8ccb5)",
+                    color: "var(--prism-ink, #1f242d)",
+                  }}
                 />
-                <p className="text-xs text-slate-500">
-                  输入后系统将自动抓取远端论文 PDF、网页正文或仓库核心代码并切分单元。
+                <p
+                  className="text-[11px] opacity-75"
+                  style={{ color: "var(--prism-ink-muted, #5a5347)" }}
+                >
+                  自动抓取远端正文、PDF、视频字幕或仓库核心代码。
                 </p>
               </div>
             )}
 
             {activeTab === "agent-search" && hasSearchInput && (
-              <div className="bg-white border border-[#ddd6c7] rounded-lg p-3.5 space-y-2">
-                <label className="block font-mono text-xs font-semibold text-[#1a2744]">
-                  {activePlugin.inputConfig.searchLabel || "AI 工具联网搜索"}
-                </label>
+              <div className="p-3.5 space-y-2">
                 <input
                   type="text"
                   value={searchQuery}
@@ -394,121 +489,231 @@ export function IngestionStudioModal({
                   disabled={isRunning}
                   placeholder={
                     activePlugin.inputConfig.searchPlaceholder ||
-                    "输入论文名、关键词、作者或 GitHub 项目描述..."
+                    "输入论文名、关键词、作者或 GitHub 项目..."
                   }
-                  className="w-full rounded-md border border-[#ddd6c7] bg-[#fcfbf8] px-3 py-2 text-xs font-mono"
+                  className="w-full rounded-lg border px-3 py-2.5 font-mono text-xs focus:outline-none"
+                  style={{
+                    backgroundColor: "var(--prism-surface, #fcf9f2)",
+                    borderColor: "var(--prism-border, #d8ccb5)",
+                    color: "var(--prism-ink, #1f242d)",
+                  }}
                 />
-                <p className="text-xs text-slate-500">
+                <p
+                  className="text-[11px] opacity-75"
+                  style={{ color: "var(--prism-ink-muted, #5a5347)" }}
+                >
                   {llmConfig.apiKey.trim()
-                    ? "已启用在线模型：大模型将自主调用 arXiv / GitHub / Web 检索工具查找到一手原文，再完成全套拆解。"
-                    : "当前未配置 API Key：将自动使用内置直连检索器匹配 arXiv / GitHub / 公开网页后离线拆解。"}
+                    ? "将由 AI 检索 arXiv / GitHub / 公开网页一手原文并完成拆解。"
+                    : "将通过直连检索器匹配公开源后进行离线拆解。"}
                 </p>
               </div>
             )}
-
-            <p className="text-xs text-slate-500 mt-1.5">{activePlugin.inputConfig.hint}</p>
           </div>
 
-          <div className="border border-[#ddd6c7] rounded-lg bg-white p-3">
+          {errorMsg && (
+            <p className="text-xs font-mono text-rose-600 px-1">{errorMsg}</p>
+          )}
+
+          {/* Optional Title & Reading Context (Collapsed by default for clean canvas) */}
+          <div
+            className="rounded-xl border px-3.5 py-2.5"
+            style={{
+              backgroundColor: "var(--prism-surface, #fcf9f2)",
+              borderColor: "var(--prism-border, #d8ccb5)",
+            }}
+          >
             <button
               type="button"
               disabled={isRunning}
               onClick={() => setShowCustomContext((prev) => !prev)}
-              className="w-full flex items-center justify-between font-mono text-xs font-semibold text-[#1a2744] cursor-pointer"
+              className="w-full flex items-center justify-between text-xs cursor-pointer"
+              style={{ color: "var(--prism-ink-muted, #5a5347)" }}
             >
-              <span>4. 阅读定制（阅读目的 / 个人背景 / 研究课题 - 选填）</span>
-              <span>{showCustomContext ? "[收起]" : "[展开配置]"}</span>
+              <span className="font-medium flex items-center gap-2">
+                <span>自定义标题与阅读背景</span>
+                <span className="font-mono text-[10px] opacity-65">可选</span>
+              </span>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 16 16"
+                fill="none"
+                className={`w-3.5 h-3.5 transition-transform ${showCustomContext ? "rotate-180" : ""}`}
+              >
+                <path
+                  d="M4 6l4 4 4-4"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
+
             {showCustomContext && (
-              <div className="mt-3 space-y-2.5 text-xs">
+              <div className="mt-3 pt-3 border-t space-y-2.5 text-xs" style={{ borderColor: "var(--prism-border, #d8ccb5)" }}>
                 <div>
-                  <label className="block font-mono text-[11px] text-slate-700 mb-1">
-                    阅读目的
-                  </label>
-                  <select
-                    value={readingPurpose}
-                    onChange={(e) => setReadingPurpose(e.target.value)}
-                    disabled={isRunning}
-                    className="w-full rounded border border-[#ddd6c7] bg-[#fcfbf8] px-2.5 py-1.5"
+                  <label
+                    className="block font-mono text-[11px] mb-1 opacity-75"
+                    style={{ color: "var(--prism-ink-muted, #5a5347)" }}
                   >
-                    <option value="彻底理解">彻底理解（构建完整心智模型）</option>
-                    <option value="复现">代码复现（重点排查数据、超参与实现缺口）</option>
-                    <option value="审稿">审稿质疑（重点排查隐含假设、对照与替代解释）</option>
-                    <option value="写相关工作">写相关工作（提炼差异定位与英文学术句式）</option>
-                    <option value="面试深挖">技术面试准备（深挖边界条件与项目改造话术）</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-mono text-[11px] text-slate-700 mb-1">
-                    我的知识背景（生成定制前置知识地图，留空则不猜测）
+                    工作台标题（留空自动提取）
                   </label>
                   <input
                     type="text"
-                    value={userBackground}
-                    onChange={(e) => setUserBackground(e.target.value)}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
                     disabled={isRunning}
-                    placeholder="例如：熟悉 Python 与 PyTorch，不熟悉统计因果推断与扩散模型"
-                    className="w-full rounded border border-[#ddd6c7] bg-[#fcfbf8] px-2.5 py-1.5"
+                    placeholder="例如：LoRA 原论文精读 / nanoid 源码拆解"
+                    className="w-full rounded-lg border px-2.5 py-1.5 text-xs focus:outline-none"
+                    style={{
+                      backgroundColor: "var(--prism-surface-subtle, #f6f0e3)",
+                      borderColor: "var(--prism-border, #d8ccb5)",
+                      color: "var(--prism-ink, #1f242d)",
+                    }}
                   />
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label
+                      className="block font-mono text-[11px] mb-1 opacity-75"
+                      style={{ color: "var(--prism-ink-muted, #5a5347)" }}
+                    >
+                      阅读目的
+                    </label>
+                    <select
+                      value={readingPurpose}
+                      onChange={(e) => setReadingPurpose(e.target.value)}
+                      disabled={isRunning}
+                      className="w-full rounded-lg border px-2.5 py-1.5 text-xs focus:outline-none"
+                      style={{
+                        backgroundColor: "var(--prism-surface-subtle, #f6f0e3)",
+                        borderColor: "var(--prism-border, #d8ccb5)",
+                        color: "var(--prism-ink, #1f242d)",
+                      }}
+                    >
+                      <option value="彻底理解">彻底理解（构建完整心智模型）</option>
+                      <option value="复现">代码复现（排查超参与实现缺口）</option>
+                      <option value="审稿">审稿质疑（排查隐含假设与漏洞）</option>
+                      <option value="写相关工作">写相关工作（提炼差异定位）</option>
+                      <option value="面试深挖">技术面试准备（深挖边界条件）</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label
+                      className="block font-mono text-[11px] mb-1 opacity-75"
+                      style={{ color: "var(--prism-ink-muted, #5a5347)" }}
+                    >
+                      个人背景
+                    </label>
+                    <input
+                      type="text"
+                      value={userBackground}
+                      onChange={(e) => setUserBackground(e.target.value)}
+                      disabled={isRunning}
+                      placeholder="例：熟悉 PyTorch，初学扩散模型"
+                      className="w-full rounded-lg border px-2.5 py-1.5 text-xs focus:outline-none"
+                      style={{
+                        backgroundColor: "var(--prism-surface-subtle, #f6f0e3)",
+                        borderColor: "var(--prism-border, #d8ccb5)",
+                        color: "var(--prism-ink, #1f242d)",
+                      }}
+                    />
+                  </div>
+                </div>
                 <div>
-                  <label className="block font-mono text-[11px] text-slate-700 mb-1">
-                    我的研究课题 / 工作方向（在底部复盘对比可借鉴点与不适用点）
+                  <label
+                    className="block font-mono text-[11px] mb-1 opacity-75"
+                    style={{ color: "var(--prism-ink-muted, #5a5347)" }}
+                  >
+                    关联课题 / 工作方向
                   </label>
                   <input
                     type="text"
                     value={userTopic}
                     onChange={(e) => setUserTopic(e.target.value)}
                     disabled={isRunning}
-                    placeholder="例如：长文本 RAG 检索优化 / 高并发调度网关"
-                    className="w-full rounded border border-[#ddd6c7] bg-[#fcfbf8] px-2.5 py-1.5"
+                    placeholder="例：长文本 RAG 检索优化"
+                    className="w-full rounded-lg border px-2.5 py-1.5 text-xs focus:outline-none"
+                    style={{
+                      backgroundColor: "var(--prism-surface-subtle, #f6f0e3)",
+                      borderColor: "var(--prism-border, #d8ccb5)",
+                      color: "var(--prism-ink, #1f242d)",
+                    }}
                   />
                 </div>
               </div>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#ddd6c7]">
-            <div className="inline-flex items-center gap-1 rounded-lg border border-[#ddd6c7] bg-white p-0.5 font-mono text-[11px]">
+          {/* Minimal Footer */}
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t"
+            style={{ borderColor: "var(--prism-border, #d8ccb5)" }}
+          >
+            <div
+              className="inline-flex items-center gap-0.5 rounded-lg border p-0.5 font-mono text-[11px]"
+              style={{
+                backgroundColor: "var(--prism-surface-subtle, #f6f0e3)",
+                borderColor: "var(--prism-border, #d8ccb5)",
+              }}
+            >
               <button
                 type="button"
                 data-testid="studio-speed-balanced"
+                title="先完整生成前 5 段后再开放进入阅读，第 6 段起严格逐段（1 段/次）稳步生成"
                 onClick={() => setAnalysisSpeedMode("balanced")}
                 className={`px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
-                  analysisSpeedMode === "balanced"
-                    ? "bg-[#1a2744] text-amber-200 font-semibold"
-                    : "text-slate-600 hover:text-[#1a2744]"
+                  analysisSpeedMode === "balanced" ? "font-semibold shadow-sm" : "opacity-65 hover:opacity-100"
                 }`}
+                style={
+                  analysisSpeedMode === "balanced"
+                    ? {
+                        backgroundColor: "var(--prism-heading, #1a2744)",
+                        color: "var(--prism-bg, #f1eadc)",
+                      }
+                    : undefined
+                }
               >
-                标准精读 · 4并发
+                标准逐段
               </button>
               <button
                 type="button"
                 data-testid="studio-speed-fast"
+                title="先完整生成前 5 段后再开放进入阅读，后续微批轻并发加速"
                 onClick={() => setAnalysisSpeedMode("fast")}
                 className={`px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
-                  analysisSpeedMode === "fast"
-                    ? "bg-amber-400/25 text-amber-900 font-semibold"
-                    : "text-slate-600 hover:text-[#1a2744]"
+                  analysisSpeedMode === "fast" ? "font-semibold shadow-sm" : "opacity-65 hover:opacity-100"
                 }`}
+                style={
+                  analysisSpeedMode === "fast"
+                    ? {
+                        backgroundColor: "var(--prism-surface, #fcf9f2)",
+                        color: "var(--prism-heading, #1a2744)",
+                      }
+                    : undefined
+                }
               >
-                极速模式 · 5并发
+                极速微批
               </button>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-auto">
               <button
                 type="button"
                 onClick={onClose}
-                className="font-mono text-xs px-3.5 py-2 rounded border border-[#ddd6c7] bg-white hover:bg-slate-100 cursor-pointer"
+                className="text-xs px-3 py-1.5 rounded-lg cursor-pointer opacity-70 hover:opacity-100 transition-opacity"
               >
                 取消
               </button>
               <button
                 type="submit"
-                className="font-mono text-xs px-4 py-2 rounded bg-[#1a2744] hover:bg-[#24365c] text-white font-semibold cursor-pointer"
+                className="text-xs px-4 py-2 rounded-lg font-semibold cursor-pointer transition-opacity hover:opacity-90"
+                style={{
+                  backgroundColor: "var(--prism-heading, #1a2744)",
+                  color: "var(--prism-bg, #f1eadc)",
+                }}
               >
-                加入后台并行解析
+                开始解析
               </button>
             </div>
           </div>
